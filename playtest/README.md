@@ -26,9 +26,9 @@ which matches the rules simulator in the design notes.
 
 ## Rule options to playtest
 
-The setup screen has a "Rule options to playtest" panel. The Recommended button picks the set that tested best.
+The table starts with the default rules below, which tested best. The setup screen's "Rule options to playtest" panel can change any of them, and "Reset to v1" goes back to the written v1 rules.
 
-| Option | Choices | Recommended |
+| Option | Choices | Default |
 |---|---|---|
 | Junk cards | 20 Junk and 32 Rocks, or 5 Junk and 47 Rocks | 5 Junk |
 | Junk trade | Off, or 5 Junk buy one tool | Off (moot with 5 Junk) |
@@ -36,6 +36,8 @@ The setup screen has a "Rule options to playtest" panel. The Recommended button 
 | Starting tools | 1, 3 or 5 | 3 |
 | Dice | 2, or 1 | 2 |
 | Claim Jump | Before the rival rolls, or after seeing the roll | After the roll |
+| Gems from the Dig | Keep your own Gem, or every Gem goes to the bottom | Every Gem goes to the bottom |
+| Drill tools (dig the top card, keep your own Gem) | None, 2 or 4 in each tool deck | 2 |
 
 `src/variants_test.js` plays 4,000 Hard-against-Hard games (and Hard against Medium and Easy) for each rule set and prints game length, skill and luck measures.
 

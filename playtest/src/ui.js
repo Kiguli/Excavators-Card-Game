@@ -270,6 +270,7 @@ const UI = {
     return { junk: +v('r-junk'), junkTrade: +v('r-jtrade'), ladder: v('r-ladder') === '1', start: +v('r-start'), dice: +v('r-dice'), cjAfter: v('r-cj') === '1', topGems: v('r-topgems') !== '0', drill: +v('r-drill') };
   },
   rulesText(r) {
+    if (r.junk === 5 && !r.junkTrade && r.ladder && r.start === 3 && r.dice === 2 && r.cjAfter && !r.topGems && r.drill === 2) return 'default rules: 5 Junk, Rock ladder, 3 starting tools, Claim Jump after the roll, Gems not kept from the Dig, 2 Drills each';
     const out = [];
     if (r.junk !== 20) out.push(`${r.junk} Junk, ${52 - r.junk} Rocks`);
     if (r.junkTrade) out.push(`${r.junkTrade} Junk buy a tool`);
@@ -301,8 +302,8 @@ function boot() {
   });
   $('#start').addEventListener('click', () => UI.start());
   const setRules = vals => { for (const [k, v] of Object.entries(vals)) { const e = document.getElementById(`r-${k}-${v}`); if (e) e.checked = true; } };
-  $('#r-recommended').addEventListener('click', () => setRules({ junk: 5, jtrade: 0, ladder: 1, start: 3, dice: 2, cj: 1, topgems: 1, drill: 0 }));
-  $('#r-drills').addEventListener('click', () => setRules({ junk: 5, jtrade: 0, ladder: 1, start: 3, dice: 2, cj: 1, topgems: 0, drill: 2 }));
+  $('#r-recommended').addEventListener('click', () => setRules({ junk: 5, jtrade: 0, ladder: 1, start: 3, dice: 2, cj: 1, topgems: 0, drill: 2 }));
+  $('#r-drills').addEventListener('click', () => setRules({ junk: 5, jtrade: 0, ladder: 1, start: 3, dice: 2, cj: 1, topgems: 1, drill: 0 }));
   $('#r-reset').addEventListener('click', () => setRules({ junk: 20, jtrade: 0, ladder: 0, start: 1, dice: 2, cj: 0, topgems: 1, drill: 0 }));
   $('#new').addEventListener('click', () => { $('#setup').hidden = false; });
   $('#again').addEventListener('click', () => { $('#end').hidden = true; $('#setup').hidden = false; });
