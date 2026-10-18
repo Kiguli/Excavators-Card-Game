@@ -77,6 +77,15 @@ button { font: inherit; color: inherit; }
 .minepile .deck { position: relative; width: var(--cw); }
 .minepile .deck img { width: 100%; display: block; border-radius: 6% / 4.3%; box-shadow: 3px 3px 0 #3a2a1f, 6px 6px 0 #2a1e16, 0 6px 14px rgba(0,0,0,.7); }
 .minepile .count { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); background: rgba(0,0,0,.8); padding: 2px 10px; border-radius: 99px; font: 20px/1.1 var(--display); letter-spacing: 1px; }
+.center { position: relative; }
+#banner { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5; display: flex; gap: 14px; align-items: center;
+  width: min(560px, calc(100% - 24px)); padding: 14px 18px; border-radius: 14px; background: rgba(20,14,10,.94); border: 2px solid var(--sapphire);
+  box-shadow: 0 12px 40px rgba(0,0,0,.7); animation: pop .25s ease-out; }
+#banner.red { border-color: var(--ruby); }
+#banner img { width: 72px; border-radius: 6% / 4.3%; flex: none; }
+#banner p { margin: 0; font-size: 17px; font-weight: 600; }
+@keyframes pop { from { transform: translate(-50%, -50%) scale(.9); opacity: 0; } }
+.minepile .ld .note { max-width: 80px; text-align: center; text-transform: none; letter-spacing: 0; }
 .minepile .ld { display: grid; gap: 4px; justify-items: center; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .slot { width: var(--cw); aspect-ratio: 360 / 503; border: 2px dashed var(--seam); border-radius: 6% / 4.3%; }
 .slot.sm { width: 54px; }
@@ -168,7 +177,7 @@ button { font: inherit; color: inherit; }
 #float img { width: 100%; display: block; border-radius: 6% / 4.3%; }
 #zoom { cursor: zoom-out; }
 #zoom img { max-height: 88vh; max-width: 100%; width: auto; border-radius: 3%; }
-@media (prefers-reduced-motion: reduce) { .card, .card.playable { transition: none; animation: none; } }
+@media (prefers-reduced-motion: reduce) { .card, .card.playable, #banner { transition: none; animation: none; } }
 </style>
 
 <header class="top">
@@ -194,6 +203,7 @@ button { font: inherit; color: inherit; }
         <div class="ld"><span>Last dug</span><div id="last-dug"></div></div>
       </div>
       <div id="row" aria-label="The row"></div>
+      <div id="banner" hidden role="status"></div>
       <div id="dice"></div>
     </section>
 
@@ -249,7 +259,7 @@ button { font: inherit; color: inherit; }
     <div class="rules">
       <p>The first player with 3 Gems of their own colour in their Warchest wins at once. The mine has 80 cards: 3 red and 3 blue Gems, 32 Rocks, 16 Treasures, 6 Cave-ins and 20 Junk. Each player has their own 15-card tool deck and starts with 1 tool.</p>
       <ol>
-        <li><b>Dig.</b> Take the top card of the mine. Your Gem goes to your Warchest and you dig again. A rival's Gem goes to the bottom and you dig again.</li>
+        <li><b>Dig.</b> Take the top card of the mine. Your Gem goes to your Warchest and you dig again. A rival's Gem can't be kept by you: show it, put it on the bottom of the mine, and dig again.</li>
         <li><b>Main.</b> Play tools and make Rock trades in any order: 3 Rocks draw a tool, 9 Rocks find one of your Gems (then the mine is shuffled). A Gold Nugget counts as 3 Rocks.</li>
         <li><b>Excavate.</b> Lay the top 6 cards in a row. Your rival may play Claim Jump.</li>
         <li><b>Roll.</b> Roll 2 dice and choose one. Your rival may change it with a Magnet, then you may answer. You dig the card at that position. A rival's Gem stays in the row.</li>

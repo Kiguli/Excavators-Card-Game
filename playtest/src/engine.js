@@ -44,7 +44,7 @@ class Game {
     });
     this.hands = [[], []]; this.chest = [[], []]; this.skip = [false, false]; this.knows = [false, false];
     this.p = first; this.turns = 0; this.row = []; this.rolls = []; this.chosen = -1; this.winner = null;
-    this.phase = 'setup'; this.roller = null; this.discards = []; this.logs = []; this.lastDug = null;
+    this.phase = 'setup'; this.roller = null; this.discards = []; this.logs = []; this.lastDug = null; this.lastNote = ''; this.event = null;
     this.stats = { tools: [0, 0], trades: [0, 0] };
   }
 
@@ -100,8 +100,12 @@ class Game {
     return this.winner;
   }
 
+  gemName(t) { const o = Number(t[1]); return `${this.human(o) ? 'your' : 'the ' + this.names[o] + "'s"} ${COLOUR[o]} Gem`; }
+  announce(text, q, card) { this.event = { text, q, card: card ? card.id : null, n: (this.event ? this.event.n : 0) + 1 }; this.emit(); }
   addGem(q, c) {
-    this.chest[q].push(c); this.log(q, `${this.who(q)} put ${c.t === 'G0' ? 'a red' : 'a blue'} Gem in the Warchest (${this.chest[q].length} of 3).`, c);
+    this.chest[q].push(c); this.lastNote = `To ${this.human(q) ? 'your' : this.names[q] + "'s"} Warchest`;
+    const msg = `${this.who(q)} dug ${this.human(q) ? 'your' : 'its'} ${COLOUR[q]} Gem. It goes into ${this.human(q) ? 'your' : 'their'} Warchest (${this.chest[q].length} of 3).`;
+    this.log(q, msg, c); this.announce(msg, q, c);
     if (this.chest[q].length >= 3) { this.winner = q; this.log(q, `${this.who(q)} ${this.human(q) ? 'win' : 'wins'}!`); throw new GameOver(); }
   }
 
@@ -110,18 +114,20 @@ class Game {
     for (let k = this.mine.length; k > 0; k--) {
       const c = this.mine.shift(); this.U = Math.max(0, this.U - 1); this.lastDug = c;
       if (c.t[0] === 'G' && c.t !== this.gemOf(q)) {
-        this.mine.push(c); this.log(q, `${this.who(q)} dug a rival Gem, showed it and put it on the bottom.`, c);
-        await this.beat(700); continue;
+        this.mine.push(c); this.lastNote = 'Back to the bottom';
+        const msg = `${this.who(q)} dug ${this.gemName(c.t)}. Only its owner can keep it, so it goes to the bottom of the mine and ${this.human(q) ? 'you dig' : 'they dig'} again.`;
+        this.log(q, msg, c); this.announce(msg, q, c);
+        await this.beat(1400); continue;
       }
       await this.gain(q, c, 'mine'); return;
     }
   }
 
   async gain(q, c, from) {
-    this.lastDug = c;
+    this.lastDug = c; this.lastNote = from === 'row' ? `From the row, by ${this.human(q) ? 'you' : this.names[q]}` : `Dug by ${this.human(q) ? 'you' : this.names[q]}`;
     const src = from === 'row' ? 'from the row' : 'from the mine';
     if (c.t === this.gemOf(q)) {
-      await this.beat(300); this.addGem(q, c); await this.beat(800);
+      await this.beat(300); this.addGem(q, c); await this.beat(1400);
       await this.digTop(q);
     } else if (c.t === 'CAVE') {
       this.discards.push(c); this.log(q, `${this.who(q)} dug a Cave-in ${src}!`, c); await this.beat(700);
@@ -298,7 +304,8 @@ class Game {
       } else if (c.t[0] !== 'G' || c.t === mg) {
         this.row.splice(this.die, 1); this.chosen = -1; await this.gain(r, c, 'row');
       } else {
-        this.log(r, `Position ${this.die + 1} is a rival Gem, so ${this.who(r)} can't take it.`); await this.beat(800);
+        const msg = `Position ${this.die + 1} is ${this.gemName(c.t)}, so ${this.human(r) ? 'you' : this.who(r)} can't take it. It stays in the row.`;
+        this.log(r, msg, c); this.announce(msg, r, c); await this.beat(1200);
       }
     }
     this.chosen = -1;

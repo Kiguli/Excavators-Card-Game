@@ -3,7 +3,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const img = id => `cards/${id}.webp`;
 const cname = c => c.id === 'back-mine' ? 'Hidden card' : (CARD_NAMES[c.id] || [TYPE_NAME[c.t] || c.t])[0];
-const kindName = c => c.t === 'R' ? 'Rock' : c.t === 'J' ? 'Junk' : TYPE_NAME[c.t];
+const kindName = c => c.t === 'R' ? 'Rock' : c.t === 'J' ? 'Junk' : c.t === 'G0' ? 'your red Gem' : c.t === 'G1' ? "Iguanodon's blue Gem, can't be taken" : TYPE_NAME[c.t];
 const LEVEL = {
   random: { name: 'Easy', blurb: 'Plays any card it can, half the time, with no plan.' },
   casual: { name: 'Medium', blurb: 'Chases its own Gems and Treasures, but never blocks you.' },
@@ -55,7 +55,15 @@ const UI = {
     $('#opp-hand').classList.toggle('revealed', reveal);
     // mine and row
     $('#mine-count').textContent = g.mine.length;
-    $('#last-dug').innerHTML = g.lastDug ? cardEl(g.lastDug, { cls: 'sm' }) : '<div class="slot sm"></div>';
+    $('#last-dug').innerHTML = (g.lastDug ? cardEl(g.lastDug, { cls: 'sm' }) : '<div class="slot sm"></div>') + `<span class="note">${esc(g.lastNote || '')}</span>`;
+    // a banner for Gem events, so it is always clear whose Gem went where
+    const ev = g.event, bn = $('#banner');
+    if (ev && ev.n !== this.shownEvent) {
+      this.shownEvent = ev.n;
+      bn.innerHTML = `${ev.card ? `<img src="${img(ev.card)}" alt="">` : ''}<p>${esc(ev.text)}</p>`;
+      bn.className = ev.card && /gem-red/.test(ev.card) ? 'red' : 'blue'; bn.hidden = false;
+      clearTimeout(this.bannerTimer); this.bannerTimer = setTimeout(() => { bn.hidden = true; }, 3200);
+    }
     const die = g.die, rolls = g.rolls;
     let row = '';
     for (let i = 0; i < 6; i++) {
@@ -121,7 +129,7 @@ const UI = {
     const guide = (title, text) => `<div class="guide"><h2>${title}</h2><p>${text}</p></div>`;
     switch (P.kind) {
       case 'step':
-        h = guide('Dig', 'Take the top card of the mine. Your own Gem goes to your Warchest and you dig again. A rival Gem goes to the bottom and you dig again.') +
+        h = guide('Dig', 'Take the top card of the mine. A red Gem goes into your Warchest and you dig again. A blue Gem belongs to the Iguanodon, so it goes to the bottom of the mine and you dig again.') +
           `<div class="acts">${btn('Dig the top card', true, 'primary')}</div>`; break;
       case 'main': {
         const A = d.actions, lab = { SHIFT: 'Play Second Shift (draw 2 tools)', SURVEY: `Play Survey (see ${ai}'s hand)`, HEADLAMP: 'Play Headlamp (order the top 3)',
@@ -241,7 +249,7 @@ const UI = {
 
   // ------------------------------------------------------------ games
   start() {
-    this.gen++; this.pending = null; this.sub = null;
+    this.gen++; this.pending = null; this.sub = null; $('#banner').hidden = true;
     $('#end').hidden = true; $('#setup').hidden = true;
     let first = this.firstPick === 'me' ? 0 : this.firstPick === 'ai' ? 1 : -1, rollNote = '';
     if (first < 0) {

@@ -25,7 +25,7 @@ const ui = {
     const lv = ['random', 'casual', 'memory'][i % 3];
     const g = new Game({ levels: ['human', lv], first: i % 2, ui, names: ['You', 'Iguanodon'] });
     const t0 = Date.now();
-    const w = await g.play();
+    const w = await g.play(); for (const q of [0, 1]) for (const c of g.chest[q]) if (c.t !== 'G' + q) throw new Error('game ' + i + ': ' + c.id + ' in the wrong Warchest');
     if (w === null || Date.now() - t0 > 2000) console.log('odd', i, lv, w, g.turns, Date.now() - t0);
   }
   console.log('done');

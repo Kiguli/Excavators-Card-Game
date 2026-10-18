@@ -80,6 +80,15 @@ button { font: inherit; color: inherit; }
 .minepile .deck { position: relative; width: var(--cw); }
 .minepile .deck img { width: 100%; display: block; border-radius: 6% / 4.3%; box-shadow: 3px 3px 0 #3a2a1f, 6px 6px 0 #2a1e16, 0 6px 14px rgba(0,0,0,.7); }
 .minepile .count { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); background: rgba(0,0,0,.8); padding: 2px 10px; border-radius: 99px; font: 20px/1.1 var(--display); letter-spacing: 1px; }
+.center { position: relative; }
+#banner { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 5; display: flex; gap: 14px; align-items: center;
+  width: min(560px, calc(100% - 24px)); padding: 14px 18px; border-radius: 14px; background: rgba(20,14,10,.94); border: 2px solid var(--sapphire);
+  box-shadow: 0 12px 40px rgba(0,0,0,.7); animation: pop .25s ease-out; }
+#banner.red { border-color: var(--ruby); }
+#banner img { width: 72px; border-radius: 6% / 4.3%; flex: none; }
+#banner p { margin: 0; font-size: 17px; font-weight: 600; }
+@keyframes pop { from { transform: translate(-50%, -50%) scale(.9); opacity: 0; } }
+.minepile .ld .note { max-width: 80px; text-align: center; text-transform: none; letter-spacing: 0; }
 .minepile .ld { display: grid; gap: 4px; justify-items: center; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .slot { width: var(--cw); aspect-ratio: 360 / 503; border: 2px dashed var(--seam); border-radius: 6% / 4.3%; }
 .slot.sm { width: 54px; }
@@ -171,7 +180,7 @@ button { font: inherit; color: inherit; }
 #float img { width: 100%; display: block; border-radius: 6% / 4.3%; }
 #zoom { cursor: zoom-out; }
 #zoom img { max-height: 88vh; max-width: 100%; width: auto; border-radius: 3%; }
-@media (prefers-reduced-motion: reduce) { .card, .card.playable { transition: none; animation: none; } }
+@media (prefers-reduced-motion: reduce) { .card, .card.playable, #banner { transition: none; animation: none; } }
 </style>
 
 </head><body>
@@ -198,6 +207,7 @@ button { font: inherit; color: inherit; }
         <div class="ld"><span>Last dug</span><div id="last-dug"></div></div>
       </div>
       <div id="row" aria-label="The row"></div>
+      <div id="banner" hidden role="status"></div>
       <div id="dice"></div>
     </section>
 
@@ -253,7 +263,7 @@ button { font: inherit; color: inherit; }
     <div class="rules">
       <p>The first player with 3 Gems of their own colour in their Warchest wins at once. The mine has 80 cards: 3 red and 3 blue Gems, 32 Rocks, 16 Treasures, 6 Cave-ins and 20 Junk. Each player has their own 15-card tool deck and starts with 1 tool.</p>
       <ol>
-        <li><b>Dig.</b> Take the top card of the mine. Your Gem goes to your Warchest and you dig again. A rival's Gem goes to the bottom and you dig again.</li>
+        <li><b>Dig.</b> Take the top card of the mine. Your Gem goes to your Warchest and you dig again. A rival's Gem can't be kept by you: show it, put it on the bottom of the mine, and dig again.</li>
         <li><b>Main.</b> Play tools and make Rock trades in any order: 3 Rocks draw a tool, 9 Rocks find one of your Gems (then the mine is shuffled). A Gold Nugget counts as 3 Rocks.</li>
         <li><b>Excavate.</b> Lay the top 6 cards in a row. Your rival may play Claim Jump.</li>
         <li><b>Roll.</b> Roll 2 dice and choose one. Your rival may change it with a Magnet, then you may answer. You dig the card at that position. A rival's Gem stays in the row.</li>
@@ -316,7 +326,7 @@ class Game {
     });
     this.hands = [[], []]; this.chest = [[], []]; this.skip = [false, false]; this.knows = [false, false];
     this.p = first; this.turns = 0; this.row = []; this.rolls = []; this.chosen = -1; this.winner = null;
-    this.phase = 'setup'; this.roller = null; this.discards = []; this.logs = []; this.lastDug = null;
+    this.phase = 'setup'; this.roller = null; this.discards = []; this.logs = []; this.lastDug = null; this.lastNote = ''; this.event = null;
     this.stats = { tools: [0, 0], trades: [0, 0] };
   }
 
@@ -372,8 +382,12 @@ class Game {
     return this.winner;
   }
 
+  gemName(t) { const o = Number(t[1]); return `${this.human(o) ? 'your' : 'the ' + this.names[o] + "'s"} ${COLOUR[o]} Gem`; }
+  announce(text, q, card) { this.event = { text, q, card: card ? card.id : null, n: (this.event ? this.event.n : 0) + 1 }; this.emit(); }
   addGem(q, c) {
-    this.chest[q].push(c); this.log(q, `${this.who(q)} put ${c.t === 'G0' ? 'a red' : 'a blue'} Gem in the Warchest (${this.chest[q].length} of 3).`, c);
+    this.chest[q].push(c); this.lastNote = `To ${this.human(q) ? 'your' : this.names[q] + "'s"} Warchest`;
+    const msg = `${this.who(q)} dug ${this.human(q) ? 'your' : 'its'} ${COLOUR[q]} Gem. It goes into ${this.human(q) ? 'your' : 'their'} Warchest (${this.chest[q].length} of 3).`;
+    this.log(q, msg, c); this.announce(msg, q, c);
     if (this.chest[q].length >= 3) { this.winner = q; this.log(q, `${this.who(q)} ${this.human(q) ? 'win' : 'wins'}!`); throw new GameOver(); }
   }
 
@@ -382,18 +396,20 @@ class Game {
     for (let k = this.mine.length; k > 0; k--) {
       const c = this.mine.shift(); this.U = Math.max(0, this.U - 1); this.lastDug = c;
       if (c.t[0] === 'G' && c.t !== this.gemOf(q)) {
-        this.mine.push(c); this.log(q, `${this.who(q)} dug a rival Gem, showed it and put it on the bottom.`, c);
-        await this.beat(700); continue;
+        this.mine.push(c); this.lastNote = 'Back to the bottom';
+        const msg = `${this.who(q)} dug ${this.gemName(c.t)}. Only its owner can keep it, so it goes to the bottom of the mine and ${this.human(q) ? 'you dig' : 'they dig'} again.`;
+        this.log(q, msg, c); this.announce(msg, q, c);
+        await this.beat(1400); continue;
       }
       await this.gain(q, c, 'mine'); return;
     }
   }
 
   async gain(q, c, from) {
-    this.lastDug = c;
+    this.lastDug = c; this.lastNote = from === 'row' ? `From the row, by ${this.human(q) ? 'you' : this.names[q]}` : `Dug by ${this.human(q) ? 'you' : this.names[q]}`;
     const src = from === 'row' ? 'from the row' : 'from the mine';
     if (c.t === this.gemOf(q)) {
-      await this.beat(300); this.addGem(q, c); await this.beat(800);
+      await this.beat(300); this.addGem(q, c); await this.beat(1400);
       await this.digTop(q);
     } else if (c.t === 'CAVE') {
       this.discards.push(c); this.log(q, `${this.who(q)} dug a Cave-in ${src}!`, c); await this.beat(700);
@@ -570,7 +586,8 @@ class Game {
       } else if (c.t[0] !== 'G' || c.t === mg) {
         this.row.splice(this.die, 1); this.chosen = -1; await this.gain(r, c, 'row');
       } else {
-        this.log(r, `Position ${this.die + 1} is a rival Gem, so ${this.who(r)} can't take it.`); await this.beat(800);
+        const msg = `Position ${this.die + 1} is ${this.gemName(c.t)}, so ${this.human(r) ? 'you' : this.who(r)} can't take it. It stays in the row.`;
+        this.log(r, msg, c); this.announce(msg, r, c); await this.beat(1200);
       }
     }
     this.chosen = -1;
@@ -733,7 +750,7 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const img = id => `cards/${id}.webp`;
 const cname = c => c.id === 'back-mine' ? 'Hidden card' : (CARD_NAMES[c.id] || [TYPE_NAME[c.t] || c.t])[0];
-const kindName = c => c.t === 'R' ? 'Rock' : c.t === 'J' ? 'Junk' : TYPE_NAME[c.t];
+const kindName = c => c.t === 'R' ? 'Rock' : c.t === 'J' ? 'Junk' : c.t === 'G0' ? 'your red Gem' : c.t === 'G1' ? "Iguanodon's blue Gem, can't be taken" : TYPE_NAME[c.t];
 const LEVEL = {
   random: { name: 'Easy', blurb: 'Plays any card it can, half the time, with no plan.' },
   casual: { name: 'Medium', blurb: 'Chases its own Gems and Treasures, but never blocks you.' },
@@ -785,7 +802,15 @@ const UI = {
     $('#opp-hand').classList.toggle('revealed', reveal);
     // mine and row
     $('#mine-count').textContent = g.mine.length;
-    $('#last-dug').innerHTML = g.lastDug ? cardEl(g.lastDug, { cls: 'sm' }) : '<div class="slot sm"></div>';
+    $('#last-dug').innerHTML = (g.lastDug ? cardEl(g.lastDug, { cls: 'sm' }) : '<div class="slot sm"></div>') + `<span class="note">${esc(g.lastNote || '')}</span>`;
+    // a banner for Gem events, so it is always clear whose Gem went where
+    const ev = g.event, bn = $('#banner');
+    if (ev && ev.n !== this.shownEvent) {
+      this.shownEvent = ev.n;
+      bn.innerHTML = `${ev.card ? `<img src="${img(ev.card)}" alt="">` : ''}<p>${esc(ev.text)}</p>`;
+      bn.className = ev.card && /gem-red/.test(ev.card) ? 'red' : 'blue'; bn.hidden = false;
+      clearTimeout(this.bannerTimer); this.bannerTimer = setTimeout(() => { bn.hidden = true; }, 3200);
+    }
     const die = g.die, rolls = g.rolls;
     let row = '';
     for (let i = 0; i < 6; i++) {
@@ -851,7 +876,7 @@ const UI = {
     const guide = (title, text) => `<div class="guide"><h2>${title}</h2><p>${text}</p></div>`;
     switch (P.kind) {
       case 'step':
-        h = guide('Dig', 'Take the top card of the mine. Your own Gem goes to your Warchest and you dig again. A rival Gem goes to the bottom and you dig again.') +
+        h = guide('Dig', 'Take the top card of the mine. A red Gem goes into your Warchest and you dig again. A blue Gem belongs to the Iguanodon, so it goes to the bottom of the mine and you dig again.') +
           `<div class="acts">${btn('Dig the top card', true, 'primary')}</div>`; break;
       case 'main': {
         const A = d.actions, lab = { SHIFT: 'Play Second Shift (draw 2 tools)', SURVEY: `Play Survey (see ${ai}'s hand)`, HEADLAMP: 'Play Headlamp (order the top 3)',
@@ -971,7 +996,7 @@ const UI = {
 
   // ------------------------------------------------------------ games
   start() {
-    this.gen++; this.pending = null; this.sub = null;
+    this.gen++; this.pending = null; this.sub = null; $('#banner').hidden = true;
     $('#end').hidden = true; $('#setup').hidden = true;
     let first = this.firstPick === 'me' ? 0 : this.firstPick === 'ai' ? 1 : -1, rollNote = '';
     if (first < 0) {
