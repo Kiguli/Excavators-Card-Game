@@ -12,25 +12,33 @@ const TREASURE_NO = { LANTERN: 1, CART: 2, NUGGET: 3, MAP: 4, COIN: 5, PICK: 6, 
 const TYPE_NAME = { G0: 'red Gem', G1: 'blue Gem', R: 'Rock', J: 'Junk', CAVE: 'Cave-in', LANTERN: 'Lantern', CART: 'Mine Cart',
   NUGGET: 'Gold Nugget', MAP: 'Old Map', COIN: 'Lucky Coin', PICK: 'Pickaxe', DYN: 'Dynamite', CANARY: 'Canary',
   SURVEY: 'Survey', SHOVEL: 'Shovel', DEMAG: 'Demagnetiser', FLOOD: 'Flooded Shaft', SHIFT: 'Second Shift', SONAR: 'Sonar',
-  COLLAPSE: 'Collapse', HEADLAMP: 'Headlamp', CJ: 'Claim Jump', M1: 'Magnet 1', M2: 'Magnet 2', M3: 'Magnet 3', M4: 'Magnet 4',
+  COLLAPSE: 'Collapse', HEADLAMP: 'Headlamp', CJ: 'Claim Jump', NUDGE: 'Nudge', M1: 'Magnet 1', M2: 'Magnet 2', M3: 'Magnet 3', M4: 'Magnet 4',
   M5: 'Magnet 5', M6: 'Magnet 6' };
 const COLOUR = ['red', 'blue'];
-const GEM_COST = 9, TOOL_COST = 3;
-const CAVE_ORDER = ['SURVEY', 'HEADLAMP', 'SONAR', 'COLLAPSE', 'CJ', 'SHIFT', 'DEMAG', 'FLOOD', 'SHOVEL'];
+const GEM_COST = 9, TOOL_COST = 3, LADDER = { 1: 3, 2: 5, 3: 7 };
+const CAVE_ORDER = ['SURVEY', 'HEADLAMP', 'SONAR', 'COLLAPSE', 'CJ', 'NUDGE', 'SHIFT', 'DEMAG', 'FLOOD', 'SHOVEL'];
 
 class GameOver extends Error {}
 
-function isTool(t) { return t[0] === 'M' && t.length === 2 || t === 'CJ' || TOOLS.includes(t); }
+function isTool(t) { return t[0] === 'M' && t.length === 2 || t === 'CJ' || t === 'NUDGE' || TOOLS.includes(t); }
 
 class Game {
   // levels: 'human' | 'random' (Easy) | 'casual' (Medium) | 'memory' (Hard)
-  constructor({ levels, first = 0, rng = Math.random, ui = null, names = ['Red', 'Blue'] }) {
-    this.levels = levels; this.rng = rng; this.ui = ui; this.names = names;
+  // rules: junk = Junk cards in the mine (the rest of the 20 become Rocks); junkTrade = Junk that buys a
+  // tool (0 = off); ladder = 3 Rocks buy 1 tool, 5 buy 2, 7 buy 3 (9 still buy a Gem).
+  // policy (bots, per seat, ladder only): 'greedy' buys the biggest step it can, 'single' buys 1 tool at a time,
+  // 'save' keeps Rocks for a Gem while one of its Gems is still in the mine.
+  constructor({ levels, first = 0, rng = Math.random, ui = null, names = ['Red', 'Blue'], rules = {}, policy = ['greedy', 'greedy'] }) {
+    this.levels = levels; this.rng = rng; this.ui = ui; this.names = names; this.policy = policy;
+    // dice = dice rolled (Pickaxe adds one); nudge = Nudge tools added to each tool deck (move the die 1 up or down)
+    // cjAfter = Claim Jump is played after the roll, so the jumper sees the dice and takes them
+    this.rules = Object.assign({ junk: 20, junkTrade: 0, ladder: false, start: 1, dice: 2, nudge: 0, cjAfter: false }, rules);
     this.mine = [];
     const add = (t, id) => this.mine.push({ t, id });
     for (let k = 1; k <= 3; k++) { add('G0', `gem-red-${k}`); add('G1', `gem-blue-${k}`); }
-    for (let k = 1; k <= 32; k++) add('R', `rock-${k}`);
-    for (let k = 1; k <= 20; k++) add('J', `junk-${k}`);
+    const rocks = 32 + 20 - this.rules.junk;
+    for (let k = 1; k <= rocks; k++) add('R', `rock-${(k - 1) % 32 + 1}`);
+    for (let k = 1; k <= this.rules.junk; k++) add('J', `junk-${k}`);
     for (let k = 1; k <= 6; k++) add('CAVE', `cave-${k}`);
     for (const t of TREASURES) for (let c = 1; c <= 2; c++) add(t, `treasure-${TREASURE_NO[t]}-${c}`);
     this.shuffle(this.mine);
@@ -40,12 +48,13 @@ class Game {
       const d = [1, 2, 3, 4, 5, 6].map(n => ({ t: `M${n}`, id: `${c}-magnet-${n}` }));
       d.push({ t: 'CJ', id: `${c}-claim-jump` });
       for (const t of TOOLS) d.push({ t, id: `${c}-${TOOL_SLUG[t]}` });
+      for (let k = 1; k <= this.rules.nudge; k++) d.push({ t: 'NUDGE', id: `${c}-nudge` });
       return this.shuffle(d);
     });
     this.hands = [[], []]; this.chest = [[], []]; this.skip = [false, false]; this.knows = [false, false];
     this.p = first; this.turns = 0; this.row = []; this.rolls = []; this.chosen = -1; this.winner = null;
     this.phase = 'setup'; this.roller = null; this.discards = []; this.logs = []; this.lastDug = null; this.lastNote = ''; this.event = null;
-    this.stats = { tools: [0, 0], trades: [0, 0] };
+    this.stats = { tools: [0, 0], trades: [0, 0], buys: [0, 0], junk: [0, 0], played: [0, 0], gemFrom: { mine: 0, row: 0, trade: 0 }, counters: 0, byType: {} };
   }
 
   // ---------- helpers ----------
@@ -59,7 +68,7 @@ class Game {
   has(q, t) { return this.hands[q].some(c => c.t === t); }
   count(q, t) { return this.hands[q].filter(c => c.t === t).length; }
   take(q, t) { const i = this.hands[q].findIndex(c => c.t === t); const [c] = this.hands[q].splice(i, 1); this.discards.push(c); return c; }
-  use(q, t, verb) { const c = this.take(q, t); this.log(q, `${this.who(q)} ${verb || 'played'} ${TYPE_NAME[t]}.`, c); return c; }
+  use(q, t, verb) { const c = this.take(q, t); this.stats.played[q]++; this.stats.byType[t] = (this.stats.byType[t] || 0) + 1; this.log(q, `${this.who(q)} ${verb || 'played'} ${TYPE_NAME[t]}.`, c); return c; }
   rockValue(q) { return this.count(q, 'R') + 3 * this.count(q, 'NUGGET'); }
   who(q) { return this.names[q]; }
   whose(q) { return this.human(q) ? 'Your' : this.names[q] + "'s"; }
@@ -93,7 +102,7 @@ class Game {
   async play() {
     try {
       this.phase = 'start'; this.log(null, `${this.who(this.p)} ${this.human(this.p) ? 'go' : 'goes'} first.`);
-      for (const q of [0, 1]) this.drawTool(q, 1);
+      for (const q of [0, 1]) this.drawTool(q, this.rules.start);
       while (this.winner === null) { await this.turn(); if (this.turns > 600) break; }
     } catch (e) { if (!(e instanceof GameOver)) throw e; }
     this.phase = 'over'; this.emit();
@@ -127,6 +136,7 @@ class Game {
     this.lastDug = c; this.lastNote = from === 'row' ? `From the row, by ${this.human(q) ? 'you' : this.names[q]}` : `Dug by ${this.human(q) ? 'you' : this.names[q]}`;
     const src = from === 'row' ? 'from the row' : 'from the mine';
     if (c.t === this.gemOf(q)) {
+      this.stats.gemFrom[from]++;
       await this.beat(300); this.addGem(q, c); await this.beat(1400);
       await this.digTop(q);
     } else if (c.t === 'CAVE') {
@@ -188,9 +198,24 @@ class Game {
     const [g] = this.mine.splice(i, 1);
     this.log(p, `${this.who(p)} traded ${GEM_COST} Rocks to search the mine for a Gem, then shuffled the mine.`);
     this.shuffle(this.mine); this.U = this.mine.length;
-    await this.beat(500); this.addGem(p, g); await this.beat(700);
+    this.stats.gemFrom.trade++; await this.beat(500); this.addGem(p, g); await this.beat(700);
   }
-  async toolTrade(p) { this.spendRocks(p, TOOL_COST); this.log(p, `${this.who(p)} traded ${TOOL_COST} Rocks for a tool.`); this.drawTool(p, 1); await this.beat(500); }
+  async toolTrade(p, n = 1) {
+    const cost = LADDER[n]; this.spendRocks(p, cost); this.stats.buys[p]++;
+    this.log(p, `${this.who(p)} traded ${cost} Rocks for ${n === 1 ? 'a tool' : n + ' tools'}.`); this.drawTool(p, n); await this.beat(500);
+  }
+  async junkTrade(p) {
+    for (let k = 0; k < this.rules.junkTrade; k++) this.take(p, 'J');
+    this.stats.junk[p]++;
+    this.log(p, `${this.who(p)} traded ${this.rules.junkTrade} Junk for a tool.`); this.drawTool(p, 1); await this.beat(500);
+  }
+  // the tool trades this player can afford now: [tools, cost] pairs
+  buys(p) {
+    const v = this.rockValue(p), d = this.tdeck[p].length, out = [];
+    for (const n of this.rules.ladder ? [1, 2, 3] : [1]) if (v >= LADDER[n] && d >= n) out.push(n);
+    return out;
+  }
+  canJunk(p) { return this.rules.junkTrade > 0 && this.count(p, 'J') >= this.rules.junkTrade && this.tdeck[p].length > 0; }
   async headlamp(p) { this.use(p, 'HEADLAMP'); await this.arrange(p, 3, 'Headlamp'); await this.beat(400); }
   async sonar(p, pick) {
     this.use(p, 'SONAR');
@@ -206,7 +231,8 @@ class Game {
     if (this.has(p, 'SURVEY')) a.push('SURVEY');
     if (this.has(p, 'HEADLAMP') && this.mine.length) a.push('HEADLAMP');
     if (this.has(p, 'SONAR') && this.mine.length) a.push('SONAR');
-    if (this.rockValue(p) >= TOOL_COST && this.tdeck[p].length) a.push('TOOL_TRADE');
+    for (const n of this.buys(p)) a.push('TOOL_TRADE' + (n > 1 ? n : ''));
+    if (this.canJunk(p)) a.push('JUNK_TRADE');
     if (this.rockValue(p) >= GEM_COST && this.mine.some(c => c.t === this.gemOf(p))) a.push('GEM_TRADE');
     return a;
   }
@@ -218,7 +244,10 @@ class Game {
       else if (act === 'SURVEY') await this.survey(p);
       else if (act === 'HEADLAMP') await this.headlamp(p);
       else if (act === 'SONAR') await this.sonar(p);
-      else if (act === 'TOOL_TRADE') await this.toolTrade(p);
+      else if (act === 'TOOL_TRADE') await this.toolTrade(p, 1);
+      else if (act === 'TOOL_TRADE2') await this.toolTrade(p, 2);
+      else if (act === 'TOOL_TRADE3') await this.toolTrade(p, 3);
+      else if (act === 'JUNK_TRADE') await this.junkTrade(p);
       else if (act === 'GEM_TRADE') await this.gemTrade(p, false);
       else return;
     }
@@ -234,8 +263,18 @@ class Game {
     const hold = this.lvl(p) === 'memory' && (this.knownIn(p, me, 0, 6) || this.knownIn(p, me, 13, 20)) && !this.knownIn(p, rv, 6, 13);
     while (!hold && this.rockValue(p) >= GEM_COST && this.mine.some(c => c.t === me) && this.chance(p, true))
       await this.gemTrade(p, this.lvl(p) === 'memory');
-    while (this.rockValue(p) >= TOOL_COST && this.tdeck[p].length && this.chance(p, true) && !(hold && this.rockValue(p) - TOOL_COST < GEM_COST)) {
-      await this.toolTrade(p);
+    while (this.canJunk(p) && this.chance(p, true)) await this.junkTrade(p);
+    for (;;) {
+      const opts = this.buys(p); if (!opts.length || !this.chance(p, true)) break;
+      let n;
+      if (this.lvl(p) === 'random') n = opts[this.rand(opts.length)];
+      else {
+        const pol = this.rules.ladder ? this.policy[p] : 'single';
+        if (pol === 'save' && this.mine.some(c => c.t === me)) break;
+        n = pol === 'greedy' ? opts[opts.length - 1] : 1;
+      }
+      if (hold && this.rockValue(p) - LADDER[n] < GEM_COST) break;
+      await this.toolTrade(p, n);
       if (this.has(p, 'SHIFT') && this.chance(p, true)) await this.shift(p);
     }
     if (this.has(p, 'HEADLAMP') && this.mine.length && this.chance(p, true)) await this.headlamp(p);
@@ -261,23 +300,27 @@ class Game {
     this.row = this.mine.splice(0, 6); this.U = Math.max(0, this.U - 6);
     this.log(p, `${this.who(p)} excavated ${this.row.length} cards into the row.`); this.phase = 'excavate'; await this.beat(900);
     let r = p;
-    if (this.has(o, 'CJ') && await this.ask(o, 'claimJump', { row: this.row, counter: false })) {
-      this.use(o, 'CJ'); r = o; this.skip[o] = true; await this.beat(700);
-      if (this.has(p, 'CJ') && await this.ask(p, 'claimJump', { row: this.row, counter: true })) {
-        this.use(p, 'CJ'); r = p; this.skip[p] = true; this.log(p, `${this.who(p)} jumped the claim back.`); await this.beat(700);
+    const claim = async () => {
+      if (this.has(o, 'CJ') && await this.ask(o, 'claimJump', { row: this.row, rolls: this.rolls, counter: false })) {
+        this.use(o, 'CJ'); r = o; this.skip[o] = true; this.roller = r; await this.beat(700);
+        if (this.has(p, 'CJ') && await this.ask(p, 'claimJump', { row: this.row, rolls: this.rolls, counter: true })) {
+          this.use(p, 'CJ'); r = p; this.skip[p] = true; this.roller = r; this.log(p, `${this.who(p)} jumped the claim back.`); await this.beat(700);
+        }
       }
-    }
-    this.roller = r; const rv = 1 - r; const mg = this.gemOf(r);
+    };
+    if (!this.rules.cjAfter) await claim();
+    this.roller = r; let rv = 1 - r; let mg = this.gemOf(r);
     this.phase = 'roll'; this.emit();
     if (this.has(r, 'DYN') && this.mine.length >= 6 && await this.ask(r, 'dynamite', { row: this.row })) {
       this.use(r, 'DYN'); this.mine.push(...this.row); this.row = this.mine.splice(0, 6); this.U = Math.max(0, this.U - 6);
       this.log(r, 'BOOM! The row went to the bottom and 6 new cards were excavated.'); await this.beat(1000);
     }
-    let n = 2;
-    if (this.human(r)) { if (await this.ask(r, 'roll', { row: this.row, pick: this.has(r, 'PICK') })) { this.use(r, 'PICK'); n = 3; } }
-    else if (this.has(r, 'PICK') && await this.ask(r, 'pickaxe', { row: this.row })) { this.use(r, 'PICK'); n = 3; }
+    let n = this.rules.dice;
+    if (this.human(r)) { if (await this.ask(r, 'roll', { row: this.row, pick: this.has(r, 'PICK'), dice: n })) { this.use(r, 'PICK'); n++; } }
+    else if (this.has(r, 'PICK') && await this.ask(r, 'pickaxe', { row: this.row })) { this.use(r, 'PICK'); n++; }
     this.rolls = Array.from({ length: n }, () => this.rand(6)); this.chosen = -1;
     this.log(r, `${this.who(r)} rolled ${this.rolls.map(d => d + 1).join(', ')}.`); await this.beat(800);
+    if (this.rules.cjAfter) { await claim(); rv = 1 - r; mg = this.gemOf(r); this.emit(); }
     // choose a die (a Lucky Coin can reroll one first)
     for (;;) {
       const ch = await this.ask(r, 'chooseDie', { rolls: this.rolls, row: this.row, coin: this.has(r, 'COIN') });
@@ -343,6 +386,7 @@ class Game {
     if (this.has(a, 'DEMAG') && this.lastMag && this.lastMag.by !== a) opts.push({ type: 'DEMAG' });
     if (this.has(a, 'SHOVEL') && this.row.length >= 2) opts.push({ type: 'SHOVEL' });
     if (this.has(a, 'COIN')) opts.push({ type: 'COIN' });
+    if (this.has(a, 'NUDGE')) { if (this.die > 0) opts.push({ type: 'NUDGE', d: -1 }); if (this.die < 5) opts.push({ type: 'NUDGE', d: 1 }); }
     return opts;
   }
 
@@ -363,7 +407,11 @@ class Game {
     } else if (mv.type === 'COIN') {
       this.use(a, 'COIN'); this.die = this.rand(6); this.lastMag = null;
       this.log(a, `The die was rerolled: ${this.die + 1}.`);
+    } else if (mv.type === 'NUDGE') {
+      this.use(a, 'NUDGE'); this.die = this.die + mv.d; this.lastMag = null;
+      this.log(a, `The die was nudged to ${this.die + 1}.`);
     }
+    this.stats.counters++;
     await this.beat(900);
     return true;
   }
@@ -397,7 +445,14 @@ const BOT = {
     let it = 0; for (let i = 0; i < k; i++) if (out[i] === null) out[i] = rest[it++];
     return out;
   },
-  claimJump: (g, q, { row }) => g.chance(q, row.some(c => c.t === g.gemOf(q))),
+  claimJump: (g, q, { row, rolls }) => {
+    const me = g.gemOf(q);
+    if (!g.rules.cjAfter || !rolls.length) return g.chance(q, row.some(c => c.t === me));
+    // after the roll: jump when a die lands on my Gem, or I hold the Magnet that reaches it
+    const hit = rolls.some(d => row[d] && row[d].t === me);
+    const reach = row.some((c, i) => c.t === me && g.has(q, 'M' + (i + 1)));
+    return g.chance(q, hit || reach);
+  },
   dynamite: (g, q, { row }) => {
     const mg = g.gemOf(q), rv = g.gemOf(1 - q);
     const dud = (g.lvl(q) === 'memory' && g.U === 0 && !g.mine.slice(0, 6).some(c => c.t === mg))
@@ -425,6 +480,7 @@ const BOT = {
       const safe = row.map((c, i) => i).filter(i => row[i].t !== mg).sort((i, j) => g.score(r, row[i]) - g.score(r, row[j]));
       for (const i of safe) if (has('M' + (i + 1))) return { type: 'M', k: i + 1 };
       if (has('SHOVEL') && safe.length) return { type: 'SHOVEL', swap: [safe[0], die] };
+      for (const d of [-1, 1]) if (opts.some(o => o.type === 'NUDGE' && o.d === d) && row[die + d] && row[die + d].t !== mg) return { type: 'NUDGE', d };
       if (has('COIN')) return { type: 'COIN' };
       return { type: 'pass' };
     }
@@ -435,6 +491,7 @@ const BOT = {
     const targets = row.map((c, i) => i).filter(i => row[i].t === mg);
     if (lastMag && lastMag.by !== r && has('DEMAG')) return { type: 'DEMAG' };
     for (const i of targets) if (has('M' + (i + 1))) return { type: 'M', k: i + 1 };
+    for (const d of [-1, 1]) if (opts.some(o => o.type === 'NUDGE' && o.d === d) && targets.includes(die + d)) return { type: 'NUDGE', d };
     if (has('SHOVEL') && die < row.length) return { type: 'SHOVEL', swap: [targets[0], die] };
     return { type: 'pass' };
   },

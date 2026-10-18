@@ -48,6 +48,7 @@ const UI = {
     const aiHand = g.hands[ai];
     const reveal = g.knows[me] || g.phase === 'over';
     $('#opp-name').textContent = `${g.names[ai]} · ${LEVEL[g.levels[ai]].name} AI`;
+    $('#rules-now').textContent = g.ui ? this.rulesText(g.rules) : '';
     $('#opp-chest').innerHTML = [0, 1, 2].map(i => gemSvg('blue', i < g.chest[ai].length)).join('');
     $('#opp-meta').innerHTML = `<span>${aiHand.length} in hand</span><span>${g.tdeck[ai].length} tools left</span>${g.skip[ai] ? '<span class="warn">Skips next Dig</span>' : ''}`;
     $('#opp-hand').innerHTML = reveal ? this.handHtml(aiHand, false) :
@@ -81,7 +82,7 @@ const UI = {
       PHASES.map(([k, n]) => `<span class="ph ${k === cur ? 'on' : ''}">${n}</span>`).join('<span class="sep">›</span>');
     // you
     $('#me-chest').innerHTML = [0, 1, 2].map(i => gemSvg('red', i < g.chest[me].length)).join('');
-    $('#me-meta').innerHTML = `<span>Rock value ${g.rockValue(me)}</span><span>${g.tdeck[me].length} tools left</span>${g.skip[me] ? '<span class="warn">Skips next Dig</span>' : ''}`;
+    $('#me-meta').innerHTML = `<span>Rock value ${g.rockValue(me)}</span>${g.rules.junkTrade ? `<span>Junk ${g.count(me, 'J')} of ${g.rules.junkTrade}</span>` : ''}<span>${g.tdeck[me].length} tools left</span>${g.skip[me] ? '<span class="warn">Skips next Dig</span>' : ''}`;
     $('#me-hand').innerHTML = this.handHtml(g.hands[me], true) || '<p class="empty">Your hand is empty. Dig to get cards.</p>';
     // log
     const L = g.logs.slice(-80);
@@ -133,14 +134,15 @@ const UI = {
           `<div class="acts">${btn('Dig the top card', true, 'primary')}</div>`; break;
       case 'main': {
         const A = d.actions, lab = { SHIFT: 'Play Second Shift (draw 2 tools)', SURVEY: `Play Survey (see ${ai}'s hand)`, HEADLAMP: 'Play Headlamp (order the top 3)',
-          SONAR: 'Play Sonar (bury 1 of the top 6)', TOOL_TRADE: 'Trade 3 Rocks for a tool', GEM_TRADE: 'Trade 9 Rocks for a Gem' };
+          SONAR: 'Play Sonar (bury 1 of the top 6)', TOOL_TRADE: 'Trade 3 Rocks for a tool', TOOL_TRADE2: 'Trade 5 Rocks for 2 tools', TOOL_TRADE3: 'Trade 7 Rocks for 3 tools',
+          JUNK_TRADE: `Trade ${g.rules.junkTrade} Junk for a tool`, GEM_TRADE: 'Trade 9 Rocks for a Gem' };
         h = guide('Main phase', A.length ? 'Play tools and make Rock trades in any order. Glowing cards in your hand can be played now. When you are done, excavate the row.'
           : 'You have nothing to play right now. Excavate the row to lay out the next 6 cards.') +
           `<div class="acts">${A.map(a => btn(lab[a], a, a === 'GEM_TRADE' ? 'gold' : '')).join('')}${btn('Done: excavate the row', 'EXCAVATE', 'primary')}</div>`; break;
       }
       case 'roll':
-        h = guide('Roll', 'Roll the dice, then choose one. You dig the card at that position in the row.') +
-          `<div class="acts">${d.pick ? btn('Use Pickaxe: roll 3 dice', true) : ''}${btn('Roll 2 dice', false, 'primary')}</div>`; break;
+        h = guide('Roll', d.dice > 1 ? 'Roll the dice, then choose one. You dig the card at that position in the row.' : 'Roll the die. You dig the card at that position in the row.') +
+          `<div class="acts">${d.pick ? btn(`Use Pickaxe: roll ${d.dice + 1} dice`, true) : ''}${btn(d.dice > 1 ? `Roll ${d.dice} dice` : 'Roll the die', false, 'primary')}</div>`; break;
       case 'dynamite':
         h = guide('Dynamite?', 'Send this whole row to the bottom of the mine and excavate 6 new cards.') +
           `<div class="acts">${btn('Use Dynamite', true)}${btn('Keep this row', false, 'primary')}</div>`; break;
@@ -168,6 +170,7 @@ const UI = {
       }
       case 'claimJump':
         h = guide(d.counter ? `${ai} jumped your claim` : 'Claim Jump?', d.counter ? 'Play your own Claim Jump to take the roll back. Nobody can answer this one, and you skip your next Dig.'
+          : d.rolls && d.rolls.length ? `${ai} rolled ${d.rolls.map(v => v + 1).join(' and ')}. Play Claim Jump to take these dice and the dig yourself, then skip your next Dig.`
           : `${ai} excavated this row. Play Claim Jump to take the roll and the dig yourself, then skip your next Dig.`) +
           `<div class="acts">${btn('Play Claim Jump', true)}${btn('No', false, 'primary')}</div>`; break;
       case 'flood':
@@ -256,18 +259,32 @@ const UI = {
       let a, b; do { a = 1 + Math.floor(Math.random() * 6); b = 1 + Math.floor(Math.random() * 6); } while (a === b);
       first = a > b ? 0 : 1; rollNote = `You rolled ${a}, the Iguanodon rolled ${b}.`;
     }
-    const g = new Game({ levels: ['human', this.level], first, ui: this, names: ['You', 'Iguanodon'] });
+    const g = new Game({ levels: ['human', this.level], first, ui: this, names: ['You', 'Iguanodon'], rules: this.readRules() });
     this.game = g;
     if (rollNote) g.logs.push({ q: null, text: rollNote, card: null });
     this.render(g);
     g.play().catch(e => { if (e.message !== 'stale') console.error(e); });
+  },
+  readRules() {
+    const v = id => { const e = document.querySelector(`input[name="${id}"]:checked`); return e ? e.value : null; };
+    return { junk: +v('r-junk'), junkTrade: +v('r-jtrade'), ladder: v('r-ladder') === '1', start: +v('r-start'), dice: +v('r-dice'), cjAfter: v('r-cj') === '1' };
+  },
+  rulesText(r) {
+    const out = [];
+    if (r.junk !== 20) out.push(`${r.junk} Junk, ${52 - r.junk} Rocks`);
+    if (r.junkTrade) out.push(`${r.junkTrade} Junk buy a tool`);
+    if (r.ladder) out.push('Rock ladder 3/5/7/9');
+    if (r.start !== 1) out.push(`start with ${r.start} tools`);
+    if (r.dice !== 2) out.push('1 die');
+    if (r.cjAfter) out.push('Claim Jump after the roll');
+    return out.length ? out.join(', ') : 'standard v1 rules';
   },
   showEnd(g) {
     if (g._endShown || g !== this.game) return; g._endShown = true;
     const gen = this.gen;
     const won = g.winner === 0;
     $('#end-title').textContent = won ? 'You win!' : g.winner === 1 ? 'The Iguanodon wins' : 'Game over';
-    $('#end-text').textContent = `${won ? 'Three red Gems in your Warchest' : 'Three blue Gems in its Warchest'} after ${Math.ceil(g.turns / 2)} turns each, against the ${LEVEL[g.levels[1]].name} AI. Gems: you ${g.chest[0].length}, Iguanodon ${g.chest[1].length}.`;
+    $('#end-text').textContent = `${won ? 'Three red Gems in your Warchest' : 'Three blue Gems in its Warchest'} after ${Math.ceil(g.turns / 2)} turns each, against the ${LEVEL[g.levels[1]].name} AI (${this.rulesText(g.rules)}). Gems: you ${g.chest[0].length}, Iguanodon ${g.chest[1].length}.`;
     setTimeout(() => { if (gen === this.gen) $('#end').hidden = false; }, 900);
   },
 };
@@ -281,6 +298,9 @@ function boot() {
     if (e.target.name === 'speed') UI.speed = +e.target.value;
   });
   $('#start').addEventListener('click', () => UI.start());
+  const setRules = vals => { for (const [k, v] of Object.entries(vals)) { const e = document.getElementById(`r-${k}-${v}`); if (e) e.checked = true; } };
+  $('#r-recommended').addEventListener('click', () => setRules({ junk: 5, jtrade: 0, ladder: 1, start: 3, dice: 2, cj: 1 }));
+  $('#r-reset').addEventListener('click', () => setRules({ junk: 20, jtrade: 0, ladder: 0, start: 1, dice: 2, cj: 0 }));
   $('#new').addEventListener('click', () => { $('#setup').hidden = false; });
   $('#again').addEventListener('click', () => { $('#end').hidden = true; $('#setup').hidden = false; });
   $('#rules-btn').addEventListener('click', () => { $('#rules').hidden = false; });

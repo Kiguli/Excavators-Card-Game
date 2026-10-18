@@ -24,9 +24,25 @@ which matches the rules simulator in the design notes.
 - The 9-Rock Gem trade puts the Gem in your Warchest and shuffles the mine; you don't dig again.
 - The Magnet exchange starts with the rival and goes back and forth until both players pass.
 
+## Rule options to playtest
+
+The setup screen has a "Rule options to playtest" panel. The Recommended button picks the set that tested best.
+
+| Option | Choices | Recommended |
+|---|---|---|
+| Junk cards | 20 Junk and 32 Rocks, or 5 Junk and 47 Rocks | 5 Junk |
+| Junk trade | Off, or 5 Junk buy one tool | Off (moot with 5 Junk) |
+| Rock trades | 3 Rocks for a tool, or the ladder (3 for 1 tool, 5 for 2, 7 for 3, 9 for a Gem) | Ladder |
+| Starting tools | 1, 3 or 5 | 3 |
+| Dice | 2, or 1 | 2 |
+| Claim Jump | Before the rival rolls, or after seeing the roll | After the roll |
+
+`src/variants_test.js` plays 4,000 Hard-against-Hard games (and Hard against Medium and Easy) for each rule set and prints game length, skill and luck measures.
+
 ## Files
 
 - `src/engine.js`: the rules and the three AI levels. Every decision goes through `game.ask()`, so a seat can be a person or a bot.
 - `src/ui.js`, `src/template.html`: the table, the phase guidance bar and the card preview.
 - `build.py`: inlines the sources into `index.html` (standalone page) and `artifact.html` (the same page without the document skeleton). Run `python3 build.py` after editing `src/`.
 - `src/bots_test.js`: bot-against-bot win rates. `src/fuzz_test.js`: 3,000 games with a random person, to catch rule bugs. Run each with `node`.
+- `src/variants_test.js`: the rule-option comparison above.
