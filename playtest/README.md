@@ -3,7 +3,7 @@
 A browser version of Excavators (v1 rules, v3 realistic cards) for playtesting against an AI.
 You play the red T-rex; the AI plays the blue Iguanodon.
 
-Open `index.html` in a browser, or host this folder as-is (for example as a subpage of a website).
+Open `index.html` in a browser, or host this folder as-is. It is published to https://excavators.woodingben.com by `.github/workflows/pages.yml` on every push to `main`.
 It needs no server code: everything runs in the page, and the card images are in `cards/`.
 
 ## AI levels

@@ -1,0 +1,38 @@
+# Publishes the playtest table (playtest/) to GitHub Pages on every push to main.
+name: Deploy playtest table
+
+on:
+  push:
+    branches: [main]
+    paths: ['playtest/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the site from playtest/
+        run: |
+          mkdir _site
+          cp playtest/index.html _site/
+          cp -r playtest/cards _site/
+          echo excavators.woodingben.com > _site/CNAME
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
