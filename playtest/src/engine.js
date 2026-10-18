@@ -12,15 +12,15 @@ const TREASURE_NO = { LANTERN: 1, CART: 2, NUGGET: 3, MAP: 4, COIN: 5, PICK: 6, 
 const TYPE_NAME = { G0: 'red Gem', G1: 'blue Gem', R: 'Rock', J: 'Junk', CAVE: 'Cave-in', LANTERN: 'Lantern', CART: 'Mine Cart',
   NUGGET: 'Gold Nugget', MAP: 'Old Map', COIN: 'Lucky Coin', PICK: 'Pickaxe', DYN: 'Dynamite', CANARY: 'Canary',
   SURVEY: 'Survey', SHOVEL: 'Shovel', DEMAG: 'Demagnetiser', FLOOD: 'Flooded Shaft', SHIFT: 'Second Shift', SONAR: 'Sonar',
-  COLLAPSE: 'Collapse', HEADLAMP: 'Headlamp', CJ: 'Claim Jump', NUDGE: 'Nudge', M1: 'Magnet 1', M2: 'Magnet 2', M3: 'Magnet 3', M4: 'Magnet 4',
+  COLLAPSE: 'Collapse', HEADLAMP: 'Headlamp', CJ: 'Claim Jump', NUDGE: 'Nudge', DRILL: 'Drill', M1: 'Magnet 1', M2: 'Magnet 2', M3: 'Magnet 3', M4: 'Magnet 4',
   M5: 'Magnet 5', M6: 'Magnet 6' };
 const COLOUR = ['red', 'blue'];
 const GEM_COST = 9, TOOL_COST = 3, LADDER = { 1: 3, 2: 5, 3: 7 };
-const CAVE_ORDER = ['SURVEY', 'HEADLAMP', 'SONAR', 'COLLAPSE', 'CJ', 'NUDGE', 'SHIFT', 'DEMAG', 'FLOOD', 'SHOVEL'];
+const CAVE_ORDER = ['SURVEY', 'HEADLAMP', 'SONAR', 'COLLAPSE', 'CJ', 'NUDGE', 'DRILL', 'SHIFT', 'DEMAG', 'FLOOD', 'SHOVEL'];
 
 class GameOver extends Error {}
 
-function isTool(t) { return t[0] === 'M' && t.length === 2 || t === 'CJ' || t === 'NUDGE' || TOOLS.includes(t); }
+function isTool(t) { return t[0] === 'M' && t.length === 2 || t === 'CJ' || t === 'NUDGE' || t === 'DRILL' || TOOLS.includes(t); }
 
 class Game {
   // levels: 'human' | 'random' (Easy) | 'casual' (Medium) | 'memory' (Hard)
@@ -32,7 +32,7 @@ class Game {
     this.levels = levels; this.rng = rng; this.ui = ui; this.names = names; this.policy = policy;
     // dice = dice rolled (Pickaxe adds one); nudge = Nudge tools added to each tool deck (move the die 1 up or down)
     // cjAfter = Claim Jump is played after the roll, so the jumper sees the dice and takes them
-    this.rules = Object.assign({ junk: 20, junkTrade: 0, ladder: false, start: 1, dice: 2, nudge: 0, cjAfter: false }, rules);
+    this.rules = Object.assign({ junk: 20, junkTrade: 0, ladder: false, start: 1, dice: 2, nudge: 0, cjAfter: false, topGems: true, dig: true, drill: 0 }, rules);
     this.mine = [];
     const add = (t, id) => this.mine.push({ t, id });
     for (let k = 1; k <= 3; k++) { add('G0', `gem-red-${k}`); add('G1', `gem-blue-${k}`); }
@@ -49,6 +49,7 @@ class Game {
       d.push({ t: 'CJ', id: `${c}-claim-jump` });
       for (const t of TOOLS) d.push({ t, id: `${c}-${TOOL_SLUG[t]}` });
       for (let k = 1; k <= this.rules.nudge; k++) d.push({ t: 'NUDGE', id: `${c}-nudge` });
+      for (let k = 1; k <= this.rules.drill; k++) d.push({ t: 'DRILL', id: `${c}-drill-${k}` });
       return this.shuffle(d);
     });
     this.hands = [[], []]; this.chest = [[], []]; this.skip = [false, false]; this.knows = [false, false];
@@ -119,12 +120,13 @@ class Game {
   }
 
   // ---------- digging ----------
-  async digTop(q) {
+  // keep = may keep my own Gem (always, unless the no-top-Gems rule is on; a Drill always may)
+  async digTop(q, keep = this.rules.topGems) {
     for (let k = this.mine.length; k > 0; k--) {
       const c = this.mine.shift(); this.U = Math.max(0, this.U - 1); this.lastDug = c;
-      if (c.t[0] === 'G' && c.t !== this.gemOf(q)) {
+      if (c.t[0] === 'G' && (c.t !== this.gemOf(q) || !keep)) {
         this.mine.push(c); this.lastNote = 'Back to the bottom';
-        const msg = `${this.who(q)} dug ${this.gemName(c.t)}. Only its owner can keep it, so it goes to the bottom of the mine and ${this.human(q) ? 'you dig' : 'they dig'} again.`;
+        const msg = `${this.who(q)} dug ${this.gemName(c.t)}. ${c.t === this.gemOf(q) ? 'Gems can only be won from the row or with a Drill' : 'Only its owner can keep it'}, so it goes to the bottom of the mine and ${this.human(q) ? 'you dig' : 'they dig'} again.`;
         this.log(q, msg, c); this.announce(msg, q, c);
         await this.beat(1400); continue;
       }
@@ -181,7 +183,7 @@ class Game {
     this.row = []; this.rolls = []; this.chosen = -1;
     this.phase = 'dig'; this.log(p, `${this.whose(p)} turn`); await this.beat(500);
     if (this.skip[p]) { this.skip[p] = false; this.log(p, `${this.who(p)} ${this.vs(p, 'skip')} the Dig after a Claim Jump.`); }
-    else { if (this.human(p)) await this.ask(p, 'step', { step: 'dig' }); await this.digTop(p); }
+    else if (this.rules.dig) { if (this.human(p)) await this.ask(p, 'step', { step: 'dig' }); await this.digTop(p); }
     this.phase = 'main'; this.emit();
     if (this.human(p)) await this.humanMain(p); else await this.botMain(p);
     this.phase = 'excavate'; await this.excavateAndRoll(p);
@@ -216,6 +218,7 @@ class Game {
     return out;
   }
   canJunk(p) { return this.rules.junkTrade > 0 && this.count(p, 'J') >= this.rules.junkTrade && this.tdeck[p].length > 0; }
+  async drill(p) { this.use(p, 'DRILL'); await this.digTop(p, true); await this.beat(400); }
   async headlamp(p) { this.use(p, 'HEADLAMP'); await this.arrange(p, 3, 'Headlamp'); await this.beat(400); }
   async sonar(p, pick) {
     this.use(p, 'SONAR');
@@ -231,6 +234,7 @@ class Game {
     if (this.has(p, 'SURVEY')) a.push('SURVEY');
     if (this.has(p, 'HEADLAMP') && this.mine.length) a.push('HEADLAMP');
     if (this.has(p, 'SONAR') && this.mine.length) a.push('SONAR');
+    if (this.has(p, 'DRILL') && this.mine.length) a.push('DRILL');
     for (const n of this.buys(p)) a.push('TOOL_TRADE' + (n > 1 ? n : ''));
     if (this.canJunk(p)) a.push('JUNK_TRADE');
     if (this.rockValue(p) >= GEM_COST && this.mine.some(c => c.t === this.gemOf(p))) a.push('GEM_TRADE');
@@ -244,6 +248,7 @@ class Game {
       else if (act === 'SURVEY') await this.survey(p);
       else if (act === 'HEADLAMP') await this.headlamp(p);
       else if (act === 'SONAR') await this.sonar(p);
+      else if (act === 'DRILL') await this.drill(p);
       else if (act === 'TOOL_TRADE') await this.toolTrade(p, 1);
       else if (act === 'TOOL_TRADE2') await this.toolTrade(p, 2);
       else if (act === 'TOOL_TRADE3') await this.toolTrade(p, 3);
@@ -286,6 +291,7 @@ class Game {
       await this.sonar(p, i);
     }
     if (this.has(p, 'SONAR') && this.mine.length && this.chance(p, true)) await this.sonar(p);
+    while (this.has(p, 'DRILL') && this.mine.length && (this.lvl(p) === 'memory' ? this.seen(p, 0, me) : this.chance(p, true))) await this.drill(p);
   }
 
   score(r, c) {

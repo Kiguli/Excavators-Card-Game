@@ -95,7 +95,7 @@ const UI = {
   handHtml(hand, mine) {
     const act = this.pending && this.pending.kind === 'main' ? this.pending.data.actions : [];
     const rocks = hand.filter(c => c.t === 'R'), junk = hand.filter(c => c.t === 'J');
-    const order = ['NUGGET', 'CART', 'COIN', 'PICK', 'DYN', 'CANARY', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'CJ', 'SHIFT', 'SURVEY', 'HEADLAMP', 'SONAR', 'SHOVEL', 'DEMAG', 'FLOOD', 'COLLAPSE'];
+    const order = ['NUGGET', 'CART', 'COIN', 'PICK', 'DYN', 'CANARY', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'CJ', 'SHIFT', 'SURVEY', 'HEADLAMP', 'SONAR', 'DRILL', 'SHOVEL', 'DEMAG', 'FLOOD', 'COLLAPSE'];
     const rest = hand.filter(c => c.t !== 'R' && c.t !== 'J').sort((a, b) => order.indexOf(a.t) - order.indexOf(b.t));
     let h = '';
     if (rocks.length) h += cardEl(rocks[rocks.length - 1], { cls: 'stack', badge: `×${rocks.length}`, label: 'Rocks' });
@@ -130,11 +130,11 @@ const UI = {
     const guide = (title, text) => `<div class="guide"><h2>${title}</h2><p>${text}</p></div>`;
     switch (P.kind) {
       case 'step':
-        h = guide('Dig', 'Take the top card of the mine. A red Gem goes into your Warchest and you dig again. A blue Gem belongs to the Iguanodon, so it goes to the bottom of the mine and you dig again.') +
+        h = guide('Dig', g.rules.topGems ? 'Take the top card of the mine. A red Gem goes into your Warchest and you dig again. A blue Gem belongs to the Iguanodon, so it goes to the bottom of the mine and you dig again.' : 'Take the top card of the mine. Any Gem you dig here goes to the bottom of the mine and you dig again. Win Gems from the row, a 9-Rock trade or a Drill.') +
           `<div class="acts">${btn('Dig the top card', true, 'primary')}</div>`; break;
       case 'main': {
         const A = d.actions, lab = { SHIFT: 'Play Second Shift (draw 2 tools)', SURVEY: `Play Survey (see ${ai}'s hand)`, HEADLAMP: 'Play Headlamp (order the top 3)',
-          SONAR: 'Play Sonar (bury 1 of the top 6)', TOOL_TRADE: 'Trade 3 Rocks for a tool', TOOL_TRADE2: 'Trade 5 Rocks for 2 tools', TOOL_TRADE3: 'Trade 7 Rocks for 3 tools',
+          SONAR: 'Play Sonar (bury 1 of the top 6)', DRILL: 'Play Drill (dig the top card)', TOOL_TRADE: 'Trade 3 Rocks for a tool', TOOL_TRADE2: 'Trade 5 Rocks for 2 tools', TOOL_TRADE3: 'Trade 7 Rocks for 3 tools',
           JUNK_TRADE: `Trade ${g.rules.junkTrade} Junk for a tool`, GEM_TRADE: 'Trade 9 Rocks for a Gem' };
         h = guide('Main phase', A.length ? 'Play tools and make Rock trades in any order. Glowing cards in your hand can be played now. When you are done, excavate the row.'
           : 'You have nothing to play right now. Excavate the row to lay out the next 6 cards.') +
@@ -267,7 +267,7 @@ const UI = {
   },
   readRules() {
     const v = id => { const e = document.querySelector(`input[name="${id}"]:checked`); return e ? e.value : null; };
-    return { junk: +v('r-junk'), junkTrade: +v('r-jtrade'), ladder: v('r-ladder') === '1', start: +v('r-start'), dice: +v('r-dice'), cjAfter: v('r-cj') === '1' };
+    return { junk: +v('r-junk'), junkTrade: +v('r-jtrade'), ladder: v('r-ladder') === '1', start: +v('r-start'), dice: +v('r-dice'), cjAfter: v('r-cj') === '1', topGems: v('r-topgems') !== '0', drill: +v('r-drill') };
   },
   rulesText(r) {
     const out = [];
@@ -277,6 +277,8 @@ const UI = {
     if (r.start !== 1) out.push(`start with ${r.start} tools`);
     if (r.dice !== 2) out.push('1 die');
     if (r.cjAfter) out.push('Claim Jump after the roll');
+    if (!r.topGems) out.push('no Gems from the Dig');
+    if (r.drill) out.push(`${r.drill} Drills each`);
     return out.length ? out.join(', ') : 'standard v1 rules';
   },
   showEnd(g) {
@@ -299,8 +301,9 @@ function boot() {
   });
   $('#start').addEventListener('click', () => UI.start());
   const setRules = vals => { for (const [k, v] of Object.entries(vals)) { const e = document.getElementById(`r-${k}-${v}`); if (e) e.checked = true; } };
-  $('#r-recommended').addEventListener('click', () => setRules({ junk: 5, jtrade: 0, ladder: 1, start: 3, dice: 2, cj: 1 }));
-  $('#r-reset').addEventListener('click', () => setRules({ junk: 20, jtrade: 0, ladder: 0, start: 1, dice: 2, cj: 0 }));
+  $('#r-recommended').addEventListener('click', () => setRules({ junk: 5, jtrade: 0, ladder: 1, start: 3, dice: 2, cj: 1, topgems: 1, drill: 0 }));
+  $('#r-drills').addEventListener('click', () => setRules({ junk: 5, jtrade: 0, ladder: 1, start: 3, dice: 2, cj: 1, topgems: 0, drill: 2 }));
+  $('#r-reset').addEventListener('click', () => setRules({ junk: 20, jtrade: 0, ladder: 0, start: 1, dice: 2, cj: 0, topgems: 1, drill: 0 }));
   $('#new').addEventListener('click', () => { $('#setup').hidden = false; });
   $('#again').addEventListener('click', () => { $('#end').hidden = true; $('#setup').hidden = false; });
   $('#rules-btn').addEventListener('click', () => { $('#rules').hidden = false; });
