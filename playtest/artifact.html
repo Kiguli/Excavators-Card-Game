@@ -18,8 +18,9 @@
   --sapphire: #3f86e8;
   --display: 'Bangers', Impact, 'Arial Narrow', sans-serif;
   --body: 'Barlow', 'Segoe UI', system-ui, sans-serif;
-  --cw: clamp(62px, 9.4vw, 118px);   /* row card width */
-  --hw: clamp(58px, 7.4vw, 96px);    /* hand card width */
+  /* card sizes follow the window's width and height, so the whole table fits on one screen */
+  --cw: clamp(50px, min(9.4vw, calc((100vh - 575px) / 2.4)), 118px);   /* row card width */
+  --hw: clamp(46px, min(7.4vw, calc((100vh - 575px) / 3)), 96px);    /* hand card width */
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -35,25 +36,71 @@ button { font: inherit; color: inherit; }
 .tbtn { background: var(--panel); border: 1px solid var(--seam); border-radius: 8px; padding: 7px 14px; cursor: pointer; font-weight: 600; }
 .tbtn:hover { border-color: var(--lamp); }
 
-.layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) clamp(200px, 20vw, 280px); gap: 16px; align-items: start; }
 @media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 #table { background: var(--felt); border: 1px solid var(--seam); border-radius: 14px; padding: 14px; display: grid; gap: 12px; min-width: 0;
   box-shadow: inset 0 0 80px rgba(0,0,0,.55); }
 .side { display: grid; gap: 12px; position: sticky; top: 12px; min-width: 0; }
-@media (max-width: 1000px) { .side { position: static; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-@media (max-width: 560px) { .side { grid-template-columns: minmax(0, 1fr); } #preview { display: none; } }
+@media (max-width: 1000px) { .side { display: none; } }
+#logpop { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: 16px; z-index: 15; display: grid; justify-items: end; gap: 8px; }
+#log-btn { display: flex; gap: 8px; align-items: center; max-width: min(420px, calc(100vw - 32px)); box-shadow: 0 6px 20px rgba(0,0,0,.6); }
+#log-btn span { color: var(--muted); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#logbox { display: none; width: min(380px, calc(100vw - 32px)); box-shadow: 0 12px 40px rgba(0,0,0,.7); }
+#logpop:hover #logbox, #logpop.open #logbox { display: block; }
+#logpop #log { max-height: 50vh; }
+@media (max-width: 560px) { #log-btn span { display: none; } }
+.ghost { position: fixed; left: 0; top: 0; z-index: 25; pointer-events: none; perspective: 900px; transform-origin: 0 0; }
+.ghost .gi { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; }
+.ghost img { position: absolute; inset: 0; width: 100%; height: 100%; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 6% / 4.3%; box-shadow: 0 8px 24px rgba(0,0,0,.6); }
+.ghost img.b { transform: rotateY(180deg); }
+.minepile .deck.shuffle { animation: shuffle .7s ease-in-out; }
+@keyframes shuffle { 20% { transform: translateX(-8px) rotate(-6deg); } 40% { transform: translateX(8px) rotate(5deg); } 60% { transform: translateX(-6px) rotate(-4deg); } 80% { transform: translateX(4px) rotate(2deg); } }
 
-.seat { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; align-items: center; }
-.seat h3 { margin: 0; font: 22px/1 var(--display); letter-spacing: 1px; }
+/* Seats look like the tutorial: avatar and name, a 3-slot Warchest, the hand, and the tool pile */
+.seat { display: grid; grid-template-columns: 210px minmax(0, 1fr) auto; grid-template-areas: "who hand tools" "chest hand tools" "meta hand tools"; grid-template-rows: auto auto 1fr;
+  gap: 6px 16px; align-items: start; }
+.seat .who { grid-area: who; display: flex; gap: 8px; align-items: center; }
+.seat .chestbox { grid-area: chest; display: flex; gap: 8px; align-items: center; flex-direction: row-reverse; justify-content: flex-end; }
+.seat .chestbox .lbl { writing-mode: vertical-rl; transform: rotate(180deg); }
+.seat .meta { grid-area: meta; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; gap: 8px; }
+.seat .hand { grid-area: hand; align-self: center; }
+.seat .tpile { grid-area: tools; }
+@media (max-width: 640px) {
+  /* phones: name, Warchest and tool pile on one line, the hand under it */
+  .seat { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "who chest tools" "meta meta meta" "hand hand hand"; gap: 4px 10px; align-items: center; }
+  .seat h3 { font-size: 20px; } .ava { width: 28px; height: 28px; }
+  .chest { --gw: 26px; gap: 4px; } .chest .gslot { font-size: 13px; } .seat .chestbox .lbl { display: none; }
+  .tpile .deck { width: 34px; } .tpile .count { font-size: 13px; padding: 0 5px; } .tpile .plbl { display: none; }
+  .seat .meta { font-size: 12px; }
+  #opp-hand { min-height: 0; } #opp-hand .card { width: 36px; }
+  .hand { min-height: 0; }
+  #table { padding: 8px; gap: 8px; }
+  #phases { gap: 3px; flex-wrap: nowrap; } #phases .sep { display: none; } #phases .ph { font-size: 9px; padding: 2px 5px; letter-spacing: .04em; } #phases .turn-of { font-size: 15px; margin-right: 2px; }
+  .top { padding-block: 6px; gap: 6px; } .top .tag, .top .rules-now { display: none; } .logo { font-size: 26px; } .tbtn { padding: 5px 9px; font-size: 13px; }
+}
+@media (max-height: 820px) { .thumb { width: 60px; } }
+.seat h3 { margin: 0; font: 26px/1 var(--display); letter-spacing: 1px; }
+.ava { flex: none; width: 36px; height: 36px; border-radius: 50%; background-repeat: no-repeat; background-size: 220% auto; border: 2px solid; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
+.ava.rex { background-image: url(cards/back-tools_red.webp); background-position: 100% 46%; border-color: var(--ruby); background-color: #c7442e; }
+.ava.igu { background-image: url(cards/back-tools_blue.webp); background-position: 100% 50%; border-color: var(--sapphire); background-color: #3a74c4; transform: scaleX(-1); }
+.chest .gslot { width: var(--gw); aspect-ratio: 360 / 503; border: 2px dashed var(--seam); border-radius: 6% / 4.3%; display: grid; place-items: center; font: 18px/1 var(--display); color: var(--seam); }
+.seat.you .chest .gslot { border-color: rgba(224,71,58,.5); } .seat.opp .chest .gslot { border-color: rgba(63,134,232,.5); }
+.chest .card { width: var(--gw); box-shadow: 0 0 0 2px currentColor, 0 0 14px currentColor; }
+.seat.you .chest .card { color: var(--ruby); } .seat.opp .chest .card { color: var(--sapphire); }
+.chestbox .lbl, .plbl, .tpile .plbl { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.tpile { display: grid; justify-items: center; gap: 4px; }
+.tpile .deck { position: relative; width: calc(var(--hw) * .75); }
+.tpile .deck img { width: 100%; display: block; border-radius: 6% / 4.3%; box-shadow: 2px 2px 0 #3a2a1f, 4px 4px 0 #2a1e16, 0 4px 10px rgba(0,0,0,.6); }
+.tpile .deck.empty img { opacity: .25; }
+.tpile .count, .disc .count { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); background: rgba(0,0,0,.8); padding: 1px 8px; border-radius: 99px; font: 17px/1.1 var(--display); letter-spacing: 1px; }
 .seat.opp h3 { color: var(--sapphire); } .seat.you h3 { color: var(--ruby); }
-.chest { display: flex; gap: 4px; align-items: center; }
-.chest .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-right: 4px; }
+.chest { display: flex; gap: 6px; align-items: center; --gw: 40px; }
 .meta { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .meta .warn { color: var(--lamp); }
-.hand { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; min-height: calc(var(--hw) * 1.4); align-items: flex-end; }
-#opp-hand { min-height: 0; }
-#opp-hand .back { width: 34px; margin-right: -14px; }
-#opp-hand.revealed .card { width: calc(var(--hw) * .8); }
+.hand { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: nowrap; min-width: 0; min-height: calc(var(--hw) * 1.4); align-items: flex-end; }
+#opp-hand { min-height: calc(var(--hw) * .78 * 1.4); }
+#opp-hand .card { width: calc(var(--hw) * .78); }
+#opp-hand .card:hover { transform: none; }
 .empty { color: var(--muted); margin: 0; align-self: center; }
 
 .gem { width: 26px; height: 26px; fill: rgba(255,255,255,.06); stroke: var(--seam); stroke-width: 2; stroke-linejoin: round; }
@@ -71,9 +118,14 @@ button { font: inherit; color: inherit; }
 .card.stack::after { content: ''; position: absolute; inset: 0; box-shadow: inset -4px -4px 0 rgba(255,255,255,.12); pointer-events: none; }
 @keyframes glow { 50% { box-shadow: 0 0 0 3px var(--lamp), 0 0 6px var(--lamp); } }
 
-.center { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; padding: 12px; border-radius: 12px; background: rgba(0,0,0,.25); }
-@media (max-width: 640px) { .center { grid-template-columns: minmax(0, 1fr); } }
-.minepile { display: flex; gap: 10px; align-items: center; }
+.center { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: start; padding: 12px; border-radius: 12px; background: rgba(0,0,0,.25); }
+@media (max-width: 640px) { .center { gap: 8px; padding: 8px; } }
+.minepile { display: grid; gap: 6px; justify-items: center; align-self: start; }
+.sidepiles { display: grid; grid-template-columns: auto auto; gap: 10px; justify-items: center; align-items: start; align-self: start; }
+.disc { display: grid; gap: 4px; justify-items: center; }
+#discard { position: relative; width: calc(var(--cw) * .7); }
+#discard .card { width: 100%; transform: rotate(-4deg); }
+#discard .slot { width: 100%; }
 .minepile .deck { position: relative; width: var(--cw); }
 .minepile .deck img { width: 100%; display: block; border-radius: 6% / 4.3%; box-shadow: 3px 3px 0 #3a2a1f, 6px 6px 0 #2a1e16, 0 6px 14px rgba(0,0,0,.7); }
 .minepile .count { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); background: rgba(0,0,0,.8); padding: 2px 10px; border-radius: 99px; font: 20px/1.1 var(--display); letter-spacing: 1px; }
@@ -85,11 +137,13 @@ button { font: inherit; color: inherit; }
 #banner img { width: 72px; border-radius: 6% / 4.3%; flex: none; }
 #banner p { margin: 0; font-size: 17px; font-weight: 600; }
 @keyframes pop { from { transform: translate(-50%, -50%) scale(.9); opacity: 0; } }
-.minepile .ld .note { max-width: 80px; text-align: center; text-transform: none; letter-spacing: 0; }
-.minepile .ld { display: grid; gap: 4px; justify-items: center; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.ld .note { max-width: 90px; text-align: center; font-size: 11px; color: var(--muted); }
+.ld { display: grid; gap: 4px; justify-items: center; }
+.ld .card.sm, .ld .slot.sm { width: calc(var(--cw) * .7); }
+.ld .note { display: none; }
 .slot { width: var(--cw); aspect-ratio: 360 / 503; border: 2px dashed var(--seam); border-radius: 6% / 4.3%; }
 .slot.sm { width: 54px; }
-#row { display: grid; grid-template-columns: repeat(6, minmax(0, var(--cw))); gap: 8px; justify-content: start; }
+#row { display: grid; grid-template-columns: repeat(6, minmax(0, var(--cw))); gap: 10px; justify-content: center; }
 @media (max-width: 640px) { #row { grid-template-columns: repeat(3, minmax(0, 1fr)); } #row .card, #row .slot { width: 100%; } }
 .pos { position: relative; display: grid; gap: 4px; justify-items: center; }
 .pos .num { font: 18px/1 var(--display); color: var(--muted); }
@@ -98,24 +152,28 @@ button { font: inherit; color: inherit; }
 .pos.chosen .card { box-shadow: 0 0 0 4px var(--lamp), 0 0 22px var(--lamp); transform: translateY(-4px); }
 .pos.chosen .num, .pos.rolled .num { color: var(--lamp); }
 .pos.gem-red .card { outline: 2px solid var(--ruby); } .pos.gem-blue .card { outline: 2px solid var(--sapphire); }
-#dice { display: flex; gap: 8px; align-items: center; min-height: 44px; grid-column: 1 / -1; }
+#dice { display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; grid-column: 1 / -1; order: 2; min-height: 40px; }
+#dice .who { width: 100%; text-align: center; }
 #dice .who { color: var(--muted); font-size: 13px; }
 .die { width: 40px; height: 40px; }
 .die rect { fill: #f3ede2; stroke: #8a7a66; stroke-width: 2; } .die circle { fill: #1d1510; }
 .die.picked rect { fill: var(--lamp); stroke: #fff2d6; }
 
-#phases { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+#phases { display: flex; gap: 6px; align-items: center; justify-content: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
 #phases .ph { padding: 3px 10px; border-radius: 99px; border: 1px solid var(--seam); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; font-size: 12px; }
 #phases .ph.on { background: var(--lamp); color: var(--lamp-ink); border-color: var(--lamp); }
 #phases .turn-of { font: 20px/1 var(--display); letter-spacing: 1px; margin-right: 8px; }
 #phases .turn-of.mine { color: var(--ruby); } #phases .turn-of.theirs { color: var(--sapphire); }
 #phases .sep { opacity: .5; }
 
-#prompt { border: 1px solid var(--seam); background: var(--panel); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; min-height: 92px; }
+#prompt { border: 1px solid var(--seam); background: var(--panel); border-radius: 12px; padding: 8px 12px; display: grid; gap: 6px; min-height: 76px; }
+/* the guidance bar never pushes the table off the screen: a long list of choices scrolls inside it */
+#prompt { max-height: max(130px, 20vh); overflow-y: auto; align-content: start; }
+@media (max-width: 640px) { #prompt { max-height: 170px; } #prompt .btn { padding: 6px 10px; font-size: 14px; } }
 #prompt.yours { border-color: var(--lamp); box-shadow: 0 0 0 1px var(--lamp), 0 0 24px rgba(242,169,59,.25); }
-.guide h2 { margin: 0 0 2px; font: 26px/1 var(--display); letter-spacing: 1px; color: var(--lamp); }
+.guide h2 { margin: 0 0 2px; font: 22px/1 var(--display); letter-spacing: 1px; color: var(--lamp); }
 #prompt:not(.yours) .guide h2 { color: var(--muted); }
-.guide p { margin: 0; max-width: 70ch; color: var(--text); }
+.guide p { margin: 0; max-width: 100ch; color: var(--text); }
 .acts, .sub { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .sub { color: var(--muted); font-size: 13px; }
 .btn { background: #3a2d22; border: 1px solid var(--seam); border-radius: 9px; padding: 9px 14px; cursor: pointer; font-weight: 600; display: inline-flex; gap: 8px; align-items: center; text-align: left; }
@@ -136,7 +194,12 @@ button { font: inherit; color: inherit; }
 .thumb.sel { border-color: var(--lamp); box-shadow: 0 0 14px var(--lamp); }
 .thumb[disabled] { opacity: .35; cursor: not-allowed; }
 @media (max-width: 560px) { .thumb { width: 60px; } }
-.order .ordslot { display: grid; grid-template-columns: auto auto auto; align-items: center; gap: 2px; }
+.thumbs.order { flex-wrap: nowrap; align-items: center; overflow-x: auto; gap: 6px; }
+.order .ordslot { position: relative; flex: none; }
+.order .ordslot .thumb { width: 54px; }
+.order .arrow { position: absolute; bottom: 2px; width: 22px; height: 22px; background: rgba(20,14,10,.9); }
+.order .arrow[data-mv$=",-1"] { left: 2px; } .order .arrow[data-mv$=",1"] { right: 2px; }
+.thumbs.order .acts { flex: none; margin-left: 10px; }
 .order .thumb { cursor: default; }
 .arrow { background: #3a2d22; border: 1px solid var(--seam); border-radius: 6px; width: 24px; height: 32px; cursor: pointer; padding: 0; font-size: 11px; }
 .arrow:disabled { opacity: .3; cursor: default; }
@@ -213,38 +276,49 @@ button { font: inherit; color: inherit; }
 
 <div class="layout">
   <main id="table">
+    <div id="phases" aria-live="polite"></div>
+
     <section class="seat opp" aria-label="Your rival">
-      <h3 id="opp-name">Iguanodon</h3>
+      <div class="who"><span class="ava igu" aria-hidden="true"></span><h3 id="opp-name">Iguanodon</h3></div>
+      <div class="chestbox"><div class="chest" id="opp-chest" data-zone="opp-chest"></div><span class="lbl">Warchest</span></div>
       <div class="meta" id="opp-meta"></div>
-      <div class="chest"><span class="lbl">Warchest</span><span id="opp-chest"></span></div><div></div>
-      <div class="hand" id="opp-hand"></div>
+      <div class="hand" id="opp-hand" data-zone="opp-hand"></div>
+      <div class="tpile" id="opp-tools"></div>
     </section>
 
     <section class="center" aria-label="The mine">
       <div class="minepile">
         <div class="deck" data-card="back-mine"><img src="cards/back-mine.webp" alt="The mine"><span class="count" id="mine-count">80</span></div>
-        <div class="ld"><span>Last dug</span><div id="last-dug"></div></div>
+        <span class="plbl">Mine</span>
       </div>
-      <div id="row" aria-label="The row"></div>
+      <div id="row" aria-label="The row" data-zone="row"></div>
+      <div class="sidepiles">
+        <div id="dice"></div>
+        <div class="ld"><span class="plbl">Last dug</span><div id="last-dug"></div></div>
+        <div class="disc"><div id="discard" data-zone="discard"></div><span class="plbl" id="discard-lbl">Discard</span></div>
+      </div>
       <div id="banner" hidden role="status"></div>
-      <div id="dice"></div>
     </section>
 
-    <div id="phases" aria-live="polite"></div>
     <section id="prompt" aria-live="polite"></section>
 
     <section class="seat you" aria-label="You">
-      <h3>You · T-rex</h3>
+      <div class="who"><span class="ava rex" aria-hidden="true"></span><h3>You · T-rex</h3></div>
+      <div class="chestbox"><div class="chest" id="me-chest" data-zone="me-chest"></div><span class="lbl">Warchest</span></div>
       <div class="meta" id="me-meta"></div>
-      <div class="chest"><span class="lbl">Warchest</span><span id="me-chest"></span></div><div></div>
-      <div class="hand" id="me-hand"></div>
+      <div class="hand" id="me-hand" data-zone="me-hand"></div>
+      <div class="tpile" id="me-tools"></div>
     </section>
   </main>
 
   <aside class="side">
     <div class="box"><h4>Card</h4><div id="preview"></div></div>
-    <div class="box"><h4>What happened</h4><ul id="log"></ul></div>
   </aside>
+</div>
+
+<div id="logpop">
+  <div class="box" id="logbox"><h4>What happened</h4><ul id="log"></ul></div>
+  <button class="tbtn" id="log-btn" type="button"><b>What happened</b><span id="log-last"></span></button>
 </div>
 
 <div class="overlay" id="home">
@@ -1514,9 +1588,24 @@ function dieSvg(v, cls = '') {
 function gemSvg(colour, filled) {
   return `<svg class="gem ${colour} ${filled ? 'on' : ''}" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 14 L14 6 H26 L32 14 L20 35 Z"/><path d="M8 14 H32 M14 6 L18 14 L20 35 L22 14 L26 6" class="facet"/></svg>`;
 }
+// every card object gets a number, so the table can follow a card from one place to another and animate it
+const UIDS = new WeakMap(), BY_UID = new Map(); let nextUid = 0;
+function uidOf(c) { if (!UIDS.has(c)) { UIDS.set(c, ++nextUid); BY_UID.set(nextUid, c); } return UIDS.get(c); }
+const backSrc = (c, q) => img(!isTool(c.t) ? 'back-mine' : q === 0 || (q == null && /^red-/.test(c.id)) ? 'back-tools_red' : 'back-tools_blue');
+// a hand stays on one line: when it is wider than its space, the cards overlap like a fan
+function fitHand(el) {
+  const cards = [...el.children].filter(c => c.classList.contains('card'));
+  cards.forEach(c => { c.style.marginRight = ''; });
+  if (cards.length < 2) return;
+  const gap = parseFloat(getComputedStyle(el).columnGap) || 0;
+  const total = cards.reduce((t, c) => t + c.offsetWidth, 0) + gap * (cards.length - 1);
+  const over = total - el.clientWidth;
+  if (over > 0) { const m = over / (cards.length - 1); cards.slice(0, -1).forEach(c => { c.style.marginRight = `-${m}px`; }); }
+}
+addEventListener('resize', () => { fitHand($('#me-hand')); fitHand($('#opp-hand')); });
 function cardEl(c, opts = {}) {
   const cls = ['card', opts.cls || ''].join(' ');
-  const attrs = opts.attrs || '';
+  const attrs = (opts.attrs || '') + (opts.uids ? ` data-uids="${opts.uids.map(uidOf).join(',')}"` : opts.track === false ? '' : ` data-uid="${uidOf(c)}"`);
   return `<div class="${cls}" data-card="${c.id}" ${attrs}><img src="${img(c.id)}" alt="${esc(cname(c))}" loading="lazy" draggable="false">${opts.badge ? `<span class="badge">${opts.badge}</span>` : ''}${opts.label ? `<span class="label">${opts.label}</span>` : ''}</div>`;
 }
 
@@ -1537,16 +1626,103 @@ const UI = {
   // ------------------------------------------------------------ table
   render(g) {
     if (!g) return;
+    const before = g.ui ? this.snap() : null;
+    this.draw(g); fitHand($('#me-hand')); fitHand($('#opp-hand'));
+    if (before) this.animate(before, g);
+  },
+
+  // ------------------------------------------------------------ card animations
+  // Before each redraw the table notes where every card is; after it, cards that moved slide from their old
+  // place, new cards fly in from the mine or a tool pile (a card you dig is shown big first), and cards that
+  // left the table fly to the discard pile or back under the mine.
+  snap() {
+    const m = new Map();
+    for (const el of document.querySelectorAll('#table [data-uid], #table [data-uids]')) {
+      const r = el.getBoundingClientRect(); if (!r.width) continue;
+      const ids = el.dataset.uids ? el.dataset.uids.split(',') : [el.dataset.uid];
+      const face = el.querySelector('img') ? el.querySelector('img').getAttribute('src') : '';
+      for (const u of ids) m.set(+u, { r, el, face, stack: !!el.dataset.uids, back: !!el.dataset.back, zone: (el.closest('[data-zone]') || {}).dataset?.zone });
+    }
+    return m;
+  },
+  animate(before, g) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const after = this.snap(), sp = Math.max(0.45, this.speed);
+    const rectOf = s => { const e = $(s); return e ? e.getBoundingClientRect() : null; };
+    const mineR = rectOf('#table .minepile .deck'), discR = rectOf('#discard');
+    const toolR = q => rectOf(q === 0 ? '#me-tools .deck' : '#opp-tools .deck');
+    const now = performance.now(); this.flying = this.flying || new Map();
+    let k = 0;
+    for (const [u, a] of after) {
+      const b = before.get(u), c = BY_UID.get(u);
+      if (this.flying.get(u) > now && !a.stack) a.el.style.opacity = '0';
+      if (b) {
+        const dx = b.r.left - a.r.left, dy = b.r.top - a.r.top;
+        if (Math.abs(dx) < 2 && Math.abs(dy) < 2 || a.stack) continue;
+        if (b.back !== a.back || b.zone !== a.zone) { this.fly(u, b.r, a.r, b.back ? backSrc(c, 1) : b.face, a.face, { sp, el: a.stack ? null : a.el, flip: b.back !== a.back }); continue; }
+        a.el.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${b.r.width / a.r.width})` }, { transform: 'none' }], { duration: 420 * sp, easing: 'cubic-bezier(.3,.7,.3,1)' });
+        continue;
+      }
+      // a card that was not on the table before
+      const zone = a.zone; if (!c || !zone) continue;
+      const fromTools = isTool(c.t) && (zone === 'me-hand' || zone === 'opp-hand');
+      const src = fromTools ? toolR(zone === 'me-hand' ? 0 : 1) : mineR; if (!src) continue;
+      const big = zone === 'me-hand' && !fromTools && !a.stack ? true : zone === 'me-hand' && a.stack;
+      this.fly(u, src, a.r, backSrc(c, fromTools ? (zone === 'me-hand' ? 0 : 1) : null), a.face, { sp, el: a.stack ? null : a.el, flip: !a.back, big, delay: zone === 'row' ? 110 * (k++) * sp : 0 });
+    }
+    // cards that left the table: to the discard pile or under the mine
+    for (const [u, b] of before) {
+      if (after.has(u)) continue;
+      const c = BY_UID.get(u); if (!c) continue;
+      if (discR && g.discards.includes(c)) this.fly(u, b.r, discR, b.back ? backSrc(c, 1) : b.face, img(c.id), { sp, flip: b.back, delay: 70 * (k++) * sp, fade: true });
+      else if (mineR && g.mine.includes(c)) this.fly(u, b.r, mineR, b.face, img('back-mine'), { sp, flip: !b.back, delay: 90 * (k++) * sp, fade: true });
+    }
+    // the mine is shuffled
+    const n = g.logs.length;
+    if (this.seenLogs !== undefined && g.logs.slice(this.seenLogs).some(e => /shuffle/i.test(e.text))) {
+      const d = $('#table .minepile .deck'); d.classList.remove('shuffle'); void d.offsetWidth; d.classList.add('shuffle');
+    }
+    this.seenLogs = n;
+  },
+  // a floating copy of a card, from one place to another; it can turn over on the way and pause big in the middle
+  fly(u, from, to, src1, src2, o) {
+    const gh = document.createElement('div'); gh.className = 'ghost';
+    gh.style.width = to.width + 'px'; gh.style.height = to.height + 'px';
+    gh.innerHTML = `<div class="gi"><img class="f" src="${o.flip ? src2 : src1}" alt=""><img class="b" src="${src1}" alt=""></div>`;
+    document.body.appendChild(gh);
+    const T = (r, s) => `translate(${r.left}px, ${r.top}px) scale(${s})`;
+    const s0 = from.width / to.width, dur = (o.big ? 1500 : 520) * o.sp;
+    let frames;
+    if (o.big) {
+      const t = $('#table').getBoundingClientRect(), S = Math.min(2.2, 190 / to.width);
+      const mid = { left: t.left + t.width / 2 - to.width * S / 2, top: Math.max(8, Math.min(innerHeight - to.height * S - 8, t.top + t.height * .42 - to.height * S / 2)) };
+      frames = [{ transform: T(from, s0), offset: 0 }, { transform: T(mid, S), offset: .3 }, { transform: T(mid, S), offset: .72 }, { transform: T(to, 1), offset: 1 }];
+    } else frames = [{ transform: T(from, s0) }, { transform: T(to, 1), opacity: o.fade ? .2 : 1 }];
+    const opt = { duration: dur, delay: o.delay || 0, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'both' };
+    const an = gh.animate(frames, opt);
+    if (o.flip) gh.firstElementChild.animate([{ transform: 'rotateY(180deg)' }, { transform: 'rotateY(180deg)', offset: .05 }, { transform: 'rotateY(0deg)', offset: o.big ? .3 : .6 }, { transform: 'rotateY(0deg)' }], opt);
+    const end = performance.now() + dur + (o.delay || 0);
+    if (o.el) { o.el.style.opacity = '0'; this.flying.set(u, end); }
+    an.onfinish = () => {
+      gh.remove();
+      if (this.flying.get(u) <= performance.now() + 20) this.flying.delete(u);
+      const live = document.querySelector(`#table [data-uid="${u}"]`); if (live) live.style.opacity = '';
+    };
+  },
+
+  draw(g) {
     const me = 0, ai = 1;
     // opponent
     const aiHand = g.hands[ai];
     const reveal = g.knows[me] || g.phase === 'over';
-    $('#opp-name').textContent = `${g.names[ai]} · ${LEVEL[g.levels[ai]].name} AI`;
+    $('#opp-name').textContent = g.names[ai];
     $('#rules-now').textContent = g.ui ? this.rulesText(g.rules) : '';
-    $('#opp-chest').innerHTML = [0, 1, 2].map(i => gemSvg('blue', i < g.chest[ai].length)).join('');
-    $('#opp-meta').innerHTML = `<span>${aiHand.length} in hand</span><span>${g.tdeck[ai].length} tools left</span>${g.skip[ai] ? '<span class="warn">Skips next Dig</span>' : ''}`;
-    $('#opp-hand').innerHTML = reveal ? this.handHtml(aiHand, false) :
-      aiHand.map((c, i) => `<div class="card back sm" style="--i:${i}"><img src="${img(['R', 'J', 'NUGGET', 'CART', 'COIN', 'PICK', 'DYN', 'CANARY'].includes(c.t) ? 'back-mine' : 'back-tools_blue')}" alt="Hidden card"></div>`).join('');
+    $('#opp-chest').innerHTML = this.chestHtml(g.chest[ai]);
+    $('#opp-meta').innerHTML = `<span>${LEVEL[g.levels[ai]].name} AI</span><span>${aiHand.length} card${aiHand.length === 1 ? '' : 's'} in hand</span>${g.skip[ai] ? '<span class="warn">Skips next Dig</span>' : ''}`;
+    // the rival's cards lie face down, one by one, so their number is easy to see
+    $('#opp-hand').innerHTML = reveal ? aiHand.map(c => cardEl(c)).join('') :
+      aiHand.map(c => `<div class="card back" data-uid="${uidOf(c)}" data-back="1"><img src="${img(isTool(c.t) ? 'back-tools_blue' : 'back-mine')}" alt="Hidden card"></div>`).join('');
+    $('#opp-tools').innerHTML = this.toolPile(g.tdeck[ai].length, 'blue');
     $('#opp-hand').classList.toggle('revealed', reveal);
     // mine and row
     $('#mine-count').textContent = g.mine.length;
@@ -1575,15 +1751,25 @@ const UI = {
     $('#phases').innerHTML = `<span class="turn-of ${g.p === me ? 'mine' : 'theirs'}">${g.p === me ? 'Your turn' : g.names[ai] + "'s turn"} · ${Math.ceil(g.turns / 2) || 1}</span>` +
       PHASES.map(([k, n]) => `<span class="ph ${k === cur ? 'on' : ''}">${n}</span>`).join('<span class="sep">›</span>');
     // you
-    $('#me-chest').innerHTML = [0, 1, 2].map(i => gemSvg('red', i < g.chest[me].length)).join('');
-    $('#me-meta').innerHTML = `<span>Rock value ${g.rockValue(me)}</span>${g.rules.junkTrade ? `<span>Junk ${g.count(me, 'J')} of ${g.rules.junkTrade}</span>` : ''}<span>${g.tdeck[me].length} tools left</span>${g.skip[me] ? '<span class="warn">Skips next Dig</span>' : ''}`;
+    $('#me-chest').innerHTML = this.chestHtml(g.chest[me]);
+    $('#me-meta').innerHTML = `<span>Rock value ${g.rockValue(me)}</span>${g.rules.junkTrade ? `<span>Junk ${g.count(me, 'J')} of ${g.rules.junkTrade}</span>` : ''}${g.skip[me] ? '<span class="warn">Skips next Dig</span>' : ''}`;
+    $('#me-tools').innerHTML = this.toolPile(g.tdeck[me].length, 'red');
+    const top = g.discards[g.discards.length - 1];
+    $('#discard').innerHTML = top ? cardEl(top) + `<span class="count">${g.discards.length}</span>` : '<div class="slot"></div>';
     $('#me-hand').innerHTML = this.handHtml(g.hands[me], true) || '<p class="empty">Your hand is empty. Dig to get cards.</p>';
     // log
     const L = g.logs.slice(-80);
     $('#log').innerHTML = L.map(e => `<li class="${e.q === 0 ? 'you' : e.q === 1 ? 'ai' : ''} ${/turn$/.test(e.text) ? 'turn' : ''}" ${e.card ? `data-card="${e.card}"` : ''}>${esc(e.text)}</li>`).join('');
     const lg = $('#log'); lg.scrollTop = lg.scrollHeight;
+    const lastLog = g.logs[g.logs.length - 1]; $('#log-last').textContent = lastLog ? lastLog.text : '';
     if (!this.pending) this.renderPrompt();
     if (g.phase === 'over') this.showEnd(g);
+  },
+
+  // the Warchest: 3 card slots that fill with the Gems won
+  chestHtml(gems) { return [0, 1, 2].map(i => gems[i] ? cardEl(gems[i]) : `<div class="gslot">${i + 1}</div>`).join(''); },
+  toolPile(n, colour) {
+    return `<div class="deck ${n ? '' : 'empty'}" data-card="back-tools_${colour}"><img src="${img('back-tools_' + colour)}" alt="${colour} tools"><span class="count">${n}</span></div><span class="plbl">Tools left</span>`;
   },
 
   handHtml(hand, mine) {
@@ -1592,8 +1778,8 @@ const UI = {
     const order = ['NUGGET', 'CART', 'COIN', 'PICK', 'DYN', 'CANARY', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'CJ', 'SHIFT', 'SURVEY', 'HEADLAMP', 'SONAR', 'DRILL', 'SHOVEL', 'DEMAG', 'FLOOD', 'COLLAPSE'];
     const rest = hand.filter(c => c.t !== 'R' && c.t !== 'J').sort((a, b) => order.indexOf(a.t) - order.indexOf(b.t));
     let h = '';
-    if (rocks.length) h += cardEl(rocks[rocks.length - 1], { cls: 'stack', badge: `×${rocks.length}`, label: 'Rocks' });
-    if (junk.length) h += cardEl(junk[junk.length - 1], { cls: 'stack', badge: `×${junk.length}`, label: 'Junk' });
+    if (rocks.length) h += cardEl(rocks[rocks.length - 1], { cls: 'stack', badge: `×${rocks.length}`, label: 'Rocks', uids: rocks });
+    if (junk.length) h += cardEl(junk[junk.length - 1], { cls: 'stack', badge: `×${junk.length}`, label: 'Junk', uids: junk });
     for (const c of rest) {
       const playable = mine && act.includes(c.t);
       h += cardEl(c, { cls: playable ? 'playable' : '', attrs: playable ? `data-act="${c.t}" role="button" tabindex="0" title="Play ${esc(TYPE_NAME[c.t])}"` : '' });
@@ -1687,10 +1873,10 @@ const UI = {
       case 'arrange': case 'returnOrder': {
         const ord = this.sub.order, isRet = P.kind === 'returnOrder';
         const t = isRet ? 'Return the row' : d.source;
-        const text = isRet ? `These go to the bottom of the mine. The left card comes back up first, so put ${ai}'s Gems on the right to bury them deepest. Use the arrows to reorder.`
-          : `These are the top ${ord.length} cards. The left card is the next one dug. ${g.p === 0 ? 'Your next dig is the first card, and the next row is the 6 after it.' : ''} Use the arrows to reorder.`;
-        h = guide(t, text) + `<div class="thumbs order">${ord.map((c, i) => `<div class="ordslot"><button class="arrow" data-mv="${i},-1" ${i ? '' : 'disabled'} aria-label="Move left">◀</button><div class="thumb" data-card="${c.id}"><img src="${img(c.id)}" alt="${esc(cname(c))}"><span>${i + 1}</span></div><button class="arrow" data-mv="${i},1" ${i < ord.length - 1 ? '' : 'disabled'} aria-label="Move right">▶</button></div>`).join('')}</div>` +
-          `<div class="acts">${isRet ? btn(`Bury ${ai}'s Gems deepest`, 'BURY') : ''}${btn(isRet ? 'Done: return to the mine' : 'Done: put them back', 'OK', 'primary')}</div>`; break;
+        const text = isRet ? `The left card comes back up first, so put ${ai}'s Gems on the right.`
+          : `The top ${ord.length} cards of the mine. The left card is dug next. Use the arrows to reorder.`;
+        h = guide(t, text) + `<div class="thumbs order">${ord.map((c, i) => `<div class="ordslot"><div class="thumb" data-card="${c.id}"><img src="${img(c.id)}" alt="${esc(cname(c))}"><span>${i + 1}</span></div><button class="arrow" data-mv="${i},-1" ${i ? '' : 'disabled'} aria-label="Move left">◀</button><button class="arrow" data-mv="${i},1" ${i < ord.length - 1 ? '' : 'disabled'} aria-label="Move right">▶</button></div>`).join('')}` +
+          `<div class="acts">${isRet ? btn(`Bury ${ai}'s Gems deepest`, 'BURY') : ''}${btn(isRet ? 'Done: return to the mine' : 'Done: put them back', 'OK', 'primary')}</div></div>`; break;
       }
       default: h = guide(P.kind, '') + `<div class="acts">${btn('OK', true)}</div>`;
     }
@@ -1822,6 +2008,9 @@ function boot() {
   else if (location.hash === '#play') { $('#home').hidden = true; $('#setup').hidden = false; }
   document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => { b.closest('.overlay').hidden = true; }));
   $('#zoom').addEventListener('click', () => { $('#zoom').hidden = true; });
+  // "What happened" pops up from the bottom right on hover, or on a tap
+  $('#log-btn').addEventListener('click', () => { $('#logpop').classList.toggle('open'); const lg = $('#log'); lg.scrollTop = lg.scrollHeight; });
+  $('#logpop').addEventListener('mouseenter', () => { const lg = $('#log'); lg.scrollTop = lg.scrollHeight; });
   $('#prompt').addEventListener('click', e => UI.onPromptClick(e));
   // play a glowing card straight from the hand
   $('#me-hand').addEventListener('click', e => {

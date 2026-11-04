@@ -20,9 +20,24 @@ function dieSvg(v, cls = '') {
 function gemSvg(colour, filled) {
   return `<svg class="gem ${colour} ${filled ? 'on' : ''}" viewBox="0 0 40 40" aria-hidden="true"><path d="M8 14 L14 6 H26 L32 14 L20 35 Z"/><path d="M8 14 H32 M14 6 L18 14 L20 35 L22 14 L26 6" class="facet"/></svg>`;
 }
+// every card object gets a number, so the table can follow a card from one place to another and animate it
+const UIDS = new WeakMap(), BY_UID = new Map(); let nextUid = 0;
+function uidOf(c) { if (!UIDS.has(c)) { UIDS.set(c, ++nextUid); BY_UID.set(nextUid, c); } return UIDS.get(c); }
+const backSrc = (c, q) => img(!isTool(c.t) ? 'back-mine' : q === 0 || (q == null && /^red-/.test(c.id)) ? 'back-tools_red' : 'back-tools_blue');
+// a hand stays on one line: when it is wider than its space, the cards overlap like a fan
+function fitHand(el) {
+  const cards = [...el.children].filter(c => c.classList.contains('card'));
+  cards.forEach(c => { c.style.marginRight = ''; });
+  if (cards.length < 2) return;
+  const gap = parseFloat(getComputedStyle(el).columnGap) || 0;
+  const total = cards.reduce((t, c) => t + c.offsetWidth, 0) + gap * (cards.length - 1);
+  const over = total - el.clientWidth;
+  if (over > 0) { const m = over / (cards.length - 1); cards.slice(0, -1).forEach(c => { c.style.marginRight = `-${m}px`; }); }
+}
+addEventListener('resize', () => { fitHand($('#me-hand')); fitHand($('#opp-hand')); });
 function cardEl(c, opts = {}) {
   const cls = ['card', opts.cls || ''].join(' ');
-  const attrs = opts.attrs || '';
+  const attrs = (opts.attrs || '') + (opts.uids ? ` data-uids="${opts.uids.map(uidOf).join(',')}"` : opts.track === false ? '' : ` data-uid="${uidOf(c)}"`);
   return `<div class="${cls}" data-card="${c.id}" ${attrs}><img src="${img(c.id)}" alt="${esc(cname(c))}" loading="lazy" draggable="false">${opts.badge ? `<span class="badge">${opts.badge}</span>` : ''}${opts.label ? `<span class="label">${opts.label}</span>` : ''}</div>`;
 }
 
@@ -43,16 +58,103 @@ const UI = {
   // ------------------------------------------------------------ table
   render(g) {
     if (!g) return;
+    const before = g.ui ? this.snap() : null;
+    this.draw(g); fitHand($('#me-hand')); fitHand($('#opp-hand'));
+    if (before) this.animate(before, g);
+  },
+
+  // ------------------------------------------------------------ card animations
+  // Before each redraw the table notes where every card is; after it, cards that moved slide from their old
+  // place, new cards fly in from the mine or a tool pile (a card you dig is shown big first), and cards that
+  // left the table fly to the discard pile or back under the mine.
+  snap() {
+    const m = new Map();
+    for (const el of document.querySelectorAll('#table [data-uid], #table [data-uids]')) {
+      const r = el.getBoundingClientRect(); if (!r.width) continue;
+      const ids = el.dataset.uids ? el.dataset.uids.split(',') : [el.dataset.uid];
+      const face = el.querySelector('img') ? el.querySelector('img').getAttribute('src') : '';
+      for (const u of ids) m.set(+u, { r, el, face, stack: !!el.dataset.uids, back: !!el.dataset.back, zone: (el.closest('[data-zone]') || {}).dataset?.zone });
+    }
+    return m;
+  },
+  animate(before, g) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const after = this.snap(), sp = Math.max(0.45, this.speed);
+    const rectOf = s => { const e = $(s); return e ? e.getBoundingClientRect() : null; };
+    const mineR = rectOf('#table .minepile .deck'), discR = rectOf('#discard');
+    const toolR = q => rectOf(q === 0 ? '#me-tools .deck' : '#opp-tools .deck');
+    const now = performance.now(); this.flying = this.flying || new Map();
+    let k = 0;
+    for (const [u, a] of after) {
+      const b = before.get(u), c = BY_UID.get(u);
+      if (this.flying.get(u) > now && !a.stack) a.el.style.opacity = '0';
+      if (b) {
+        const dx = b.r.left - a.r.left, dy = b.r.top - a.r.top;
+        if (Math.abs(dx) < 2 && Math.abs(dy) < 2 || a.stack) continue;
+        if (b.back !== a.back || b.zone !== a.zone) { this.fly(u, b.r, a.r, b.back ? backSrc(c, 1) : b.face, a.face, { sp, el: a.stack ? null : a.el, flip: b.back !== a.back }); continue; }
+        a.el.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${b.r.width / a.r.width})` }, { transform: 'none' }], { duration: 420 * sp, easing: 'cubic-bezier(.3,.7,.3,1)' });
+        continue;
+      }
+      // a card that was not on the table before
+      const zone = a.zone; if (!c || !zone) continue;
+      const fromTools = isTool(c.t) && (zone === 'me-hand' || zone === 'opp-hand');
+      const src = fromTools ? toolR(zone === 'me-hand' ? 0 : 1) : mineR; if (!src) continue;
+      const big = zone === 'me-hand' && !fromTools && !a.stack ? true : zone === 'me-hand' && a.stack;
+      this.fly(u, src, a.r, backSrc(c, fromTools ? (zone === 'me-hand' ? 0 : 1) : null), a.face, { sp, el: a.stack ? null : a.el, flip: !a.back, big, delay: zone === 'row' ? 110 * (k++) * sp : 0 });
+    }
+    // cards that left the table: to the discard pile or under the mine
+    for (const [u, b] of before) {
+      if (after.has(u)) continue;
+      const c = BY_UID.get(u); if (!c) continue;
+      if (discR && g.discards.includes(c)) this.fly(u, b.r, discR, b.back ? backSrc(c, 1) : b.face, img(c.id), { sp, flip: b.back, delay: 70 * (k++) * sp, fade: true });
+      else if (mineR && g.mine.includes(c)) this.fly(u, b.r, mineR, b.face, img('back-mine'), { sp, flip: !b.back, delay: 90 * (k++) * sp, fade: true });
+    }
+    // the mine is shuffled
+    const n = g.logs.length;
+    if (this.seenLogs !== undefined && g.logs.slice(this.seenLogs).some(e => /shuffle/i.test(e.text))) {
+      const d = $('#table .minepile .deck'); d.classList.remove('shuffle'); void d.offsetWidth; d.classList.add('shuffle');
+    }
+    this.seenLogs = n;
+  },
+  // a floating copy of a card, from one place to another; it can turn over on the way and pause big in the middle
+  fly(u, from, to, src1, src2, o) {
+    const gh = document.createElement('div'); gh.className = 'ghost';
+    gh.style.width = to.width + 'px'; gh.style.height = to.height + 'px';
+    gh.innerHTML = `<div class="gi"><img class="f" src="${o.flip ? src2 : src1}" alt=""><img class="b" src="${src1}" alt=""></div>`;
+    document.body.appendChild(gh);
+    const T = (r, s) => `translate(${r.left}px, ${r.top}px) scale(${s})`;
+    const s0 = from.width / to.width, dur = (o.big ? 1500 : 520) * o.sp;
+    let frames;
+    if (o.big) {
+      const t = $('#table').getBoundingClientRect(), S = Math.min(2.2, 190 / to.width);
+      const mid = { left: t.left + t.width / 2 - to.width * S / 2, top: Math.max(8, Math.min(innerHeight - to.height * S - 8, t.top + t.height * .42 - to.height * S / 2)) };
+      frames = [{ transform: T(from, s0), offset: 0 }, { transform: T(mid, S), offset: .3 }, { transform: T(mid, S), offset: .72 }, { transform: T(to, 1), offset: 1 }];
+    } else frames = [{ transform: T(from, s0) }, { transform: T(to, 1), opacity: o.fade ? .2 : 1 }];
+    const opt = { duration: dur, delay: o.delay || 0, easing: 'cubic-bezier(.3,.7,.3,1)', fill: 'both' };
+    const an = gh.animate(frames, opt);
+    if (o.flip) gh.firstElementChild.animate([{ transform: 'rotateY(180deg)' }, { transform: 'rotateY(180deg)', offset: .05 }, { transform: 'rotateY(0deg)', offset: o.big ? .3 : .6 }, { transform: 'rotateY(0deg)' }], opt);
+    const end = performance.now() + dur + (o.delay || 0);
+    if (o.el) { o.el.style.opacity = '0'; this.flying.set(u, end); }
+    an.onfinish = () => {
+      gh.remove();
+      if (this.flying.get(u) <= performance.now() + 20) this.flying.delete(u);
+      const live = document.querySelector(`#table [data-uid="${u}"]`); if (live) live.style.opacity = '';
+    };
+  },
+
+  draw(g) {
     const me = 0, ai = 1;
     // opponent
     const aiHand = g.hands[ai];
     const reveal = g.knows[me] || g.phase === 'over';
-    $('#opp-name').textContent = `${g.names[ai]} · ${LEVEL[g.levels[ai]].name} AI`;
+    $('#opp-name').textContent = g.names[ai];
     $('#rules-now').textContent = g.ui ? this.rulesText(g.rules) : '';
-    $('#opp-chest').innerHTML = [0, 1, 2].map(i => gemSvg('blue', i < g.chest[ai].length)).join('');
-    $('#opp-meta').innerHTML = `<span>${aiHand.length} in hand</span><span>${g.tdeck[ai].length} tools left</span>${g.skip[ai] ? '<span class="warn">Skips next Dig</span>' : ''}`;
-    $('#opp-hand').innerHTML = reveal ? this.handHtml(aiHand, false) :
-      aiHand.map((c, i) => `<div class="card back sm" style="--i:${i}"><img src="${img(['R', 'J', 'NUGGET', 'CART', 'COIN', 'PICK', 'DYN', 'CANARY'].includes(c.t) ? 'back-mine' : 'back-tools_blue')}" alt="Hidden card"></div>`).join('');
+    $('#opp-chest').innerHTML = this.chestHtml(g.chest[ai]);
+    $('#opp-meta').innerHTML = `<span>${LEVEL[g.levels[ai]].name} AI</span><span>${aiHand.length} card${aiHand.length === 1 ? '' : 's'} in hand</span>${g.skip[ai] ? '<span class="warn">Skips next Dig</span>' : ''}`;
+    // the rival's cards lie face down, one by one, so their number is easy to see
+    $('#opp-hand').innerHTML = reveal ? aiHand.map(c => cardEl(c)).join('') :
+      aiHand.map(c => `<div class="card back" data-uid="${uidOf(c)}" data-back="1"><img src="${img(isTool(c.t) ? 'back-tools_blue' : 'back-mine')}" alt="Hidden card"></div>`).join('');
+    $('#opp-tools').innerHTML = this.toolPile(g.tdeck[ai].length, 'blue');
     $('#opp-hand').classList.toggle('revealed', reveal);
     // mine and row
     $('#mine-count').textContent = g.mine.length;
@@ -81,15 +183,25 @@ const UI = {
     $('#phases').innerHTML = `<span class="turn-of ${g.p === me ? 'mine' : 'theirs'}">${g.p === me ? 'Your turn' : g.names[ai] + "'s turn"} · ${Math.ceil(g.turns / 2) || 1}</span>` +
       PHASES.map(([k, n]) => `<span class="ph ${k === cur ? 'on' : ''}">${n}</span>`).join('<span class="sep">›</span>');
     // you
-    $('#me-chest').innerHTML = [0, 1, 2].map(i => gemSvg('red', i < g.chest[me].length)).join('');
-    $('#me-meta').innerHTML = `<span>Rock value ${g.rockValue(me)}</span>${g.rules.junkTrade ? `<span>Junk ${g.count(me, 'J')} of ${g.rules.junkTrade}</span>` : ''}<span>${g.tdeck[me].length} tools left</span>${g.skip[me] ? '<span class="warn">Skips next Dig</span>' : ''}`;
+    $('#me-chest').innerHTML = this.chestHtml(g.chest[me]);
+    $('#me-meta').innerHTML = `<span>Rock value ${g.rockValue(me)}</span>${g.rules.junkTrade ? `<span>Junk ${g.count(me, 'J')} of ${g.rules.junkTrade}</span>` : ''}${g.skip[me] ? '<span class="warn">Skips next Dig</span>' : ''}`;
+    $('#me-tools').innerHTML = this.toolPile(g.tdeck[me].length, 'red');
+    const top = g.discards[g.discards.length - 1];
+    $('#discard').innerHTML = top ? cardEl(top) + `<span class="count">${g.discards.length}</span>` : '<div class="slot"></div>';
     $('#me-hand').innerHTML = this.handHtml(g.hands[me], true) || '<p class="empty">Your hand is empty. Dig to get cards.</p>';
     // log
     const L = g.logs.slice(-80);
     $('#log').innerHTML = L.map(e => `<li class="${e.q === 0 ? 'you' : e.q === 1 ? 'ai' : ''} ${/turn$/.test(e.text) ? 'turn' : ''}" ${e.card ? `data-card="${e.card}"` : ''}>${esc(e.text)}</li>`).join('');
     const lg = $('#log'); lg.scrollTop = lg.scrollHeight;
+    const lastLog = g.logs[g.logs.length - 1]; $('#log-last').textContent = lastLog ? lastLog.text : '';
     if (!this.pending) this.renderPrompt();
     if (g.phase === 'over') this.showEnd(g);
+  },
+
+  // the Warchest: 3 card slots that fill with the Gems won
+  chestHtml(gems) { return [0, 1, 2].map(i => gems[i] ? cardEl(gems[i]) : `<div class="gslot">${i + 1}</div>`).join(''); },
+  toolPile(n, colour) {
+    return `<div class="deck ${n ? '' : 'empty'}" data-card="back-tools_${colour}"><img src="${img('back-tools_' + colour)}" alt="${colour} tools"><span class="count">${n}</span></div><span class="plbl">Tools left</span>`;
   },
 
   handHtml(hand, mine) {
@@ -98,8 +210,8 @@ const UI = {
     const order = ['NUGGET', 'CART', 'COIN', 'PICK', 'DYN', 'CANARY', 'M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'CJ', 'SHIFT', 'SURVEY', 'HEADLAMP', 'SONAR', 'DRILL', 'SHOVEL', 'DEMAG', 'FLOOD', 'COLLAPSE'];
     const rest = hand.filter(c => c.t !== 'R' && c.t !== 'J').sort((a, b) => order.indexOf(a.t) - order.indexOf(b.t));
     let h = '';
-    if (rocks.length) h += cardEl(rocks[rocks.length - 1], { cls: 'stack', badge: `×${rocks.length}`, label: 'Rocks' });
-    if (junk.length) h += cardEl(junk[junk.length - 1], { cls: 'stack', badge: `×${junk.length}`, label: 'Junk' });
+    if (rocks.length) h += cardEl(rocks[rocks.length - 1], { cls: 'stack', badge: `×${rocks.length}`, label: 'Rocks', uids: rocks });
+    if (junk.length) h += cardEl(junk[junk.length - 1], { cls: 'stack', badge: `×${junk.length}`, label: 'Junk', uids: junk });
     for (const c of rest) {
       const playable = mine && act.includes(c.t);
       h += cardEl(c, { cls: playable ? 'playable' : '', attrs: playable ? `data-act="${c.t}" role="button" tabindex="0" title="Play ${esc(TYPE_NAME[c.t])}"` : '' });
@@ -193,10 +305,10 @@ const UI = {
       case 'arrange': case 'returnOrder': {
         const ord = this.sub.order, isRet = P.kind === 'returnOrder';
         const t = isRet ? 'Return the row' : d.source;
-        const text = isRet ? `These go to the bottom of the mine. The left card comes back up first, so put ${ai}'s Gems on the right to bury them deepest. Use the arrows to reorder.`
-          : `These are the top ${ord.length} cards. The left card is the next one dug. ${g.p === 0 ? 'Your next dig is the first card, and the next row is the 6 after it.' : ''} Use the arrows to reorder.`;
-        h = guide(t, text) + `<div class="thumbs order">${ord.map((c, i) => `<div class="ordslot"><button class="arrow" data-mv="${i},-1" ${i ? '' : 'disabled'} aria-label="Move left">◀</button><div class="thumb" data-card="${c.id}"><img src="${img(c.id)}" alt="${esc(cname(c))}"><span>${i + 1}</span></div><button class="arrow" data-mv="${i},1" ${i < ord.length - 1 ? '' : 'disabled'} aria-label="Move right">▶</button></div>`).join('')}</div>` +
-          `<div class="acts">${isRet ? btn(`Bury ${ai}'s Gems deepest`, 'BURY') : ''}${btn(isRet ? 'Done: return to the mine' : 'Done: put them back', 'OK', 'primary')}</div>`; break;
+        const text = isRet ? `The left card comes back up first, so put ${ai}'s Gems on the right.`
+          : `The top ${ord.length} cards of the mine. The left card is dug next. Use the arrows to reorder.`;
+        h = guide(t, text) + `<div class="thumbs order">${ord.map((c, i) => `<div class="ordslot"><div class="thumb" data-card="${c.id}"><img src="${img(c.id)}" alt="${esc(cname(c))}"><span>${i + 1}</span></div><button class="arrow" data-mv="${i},-1" ${i ? '' : 'disabled'} aria-label="Move left">◀</button><button class="arrow" data-mv="${i},1" ${i < ord.length - 1 ? '' : 'disabled'} aria-label="Move right">▶</button></div>`).join('')}` +
+          `<div class="acts">${isRet ? btn(`Bury ${ai}'s Gems deepest`, 'BURY') : ''}${btn(isRet ? 'Done: return to the mine' : 'Done: put them back', 'OK', 'primary')}</div></div>`; break;
       }
       default: h = guide(P.kind, '') + `<div class="acts">${btn('OK', true)}</div>`;
     }
@@ -328,6 +440,9 @@ function boot() {
   else if (location.hash === '#play') { $('#home').hidden = true; $('#setup').hidden = false; }
   document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => { b.closest('.overlay').hidden = true; }));
   $('#zoom').addEventListener('click', () => { $('#zoom').hidden = true; });
+  // "What happened" pops up from the bottom right on hover, or on a tap
+  $('#log-btn').addEventListener('click', () => { $('#logpop').classList.toggle('open'); const lg = $('#log'); lg.scrollTop = lg.scrollHeight; });
+  $('#logpop').addEventListener('mouseenter', () => { const lg = $('#log'); lg.scrollTop = lg.scrollHeight; });
   $('#prompt').addEventListener('click', e => UI.onPromptClick(e));
   // play a glowing card straight from the hand
   $('#me-hand').addEventListener('click', e => {
