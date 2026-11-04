@@ -1,0 +1,582 @@
+// Animated tutorial for Excavators (default rules: 5 Junk, Rock ladder, 3 starting tools,
+// Claim Jump after the roll, Gems from the Dig go to the bottom, 2 Drills each).
+// The T-rex (red) and the Iguanodon (blue) play a short scripted game with open hands and
+// explain each rule as it happens. Used by tutorial.html and by the "How to play" overlay in the game.
+// Tutorial.mount(el, { onPlay }) returns { start(step), stop() }.
+const Tutorial = (() => {
+  const IMG = id => `cards/${id}.webp`;
+  const isFiller = id => /^(m|rt|bt)\d+$/.test(id);
+  const backOf = id => /^(red-|rt)/.test(id) ? 'back-tools_red' : /^(blue-|bt)/.test(id) ? 'back-tools_blue' : 'back-mine';
+  const faceOf = id => isFiller(id) ? backOf(id) : id;
+  const PHASES = ['Dig', 'Main', 'Excavate', 'Roll', 'Return'];
+  const WHO = { rex: { name: 'T-rex', cls: 'rex' }, igu: { name: 'Iguanodon', cls: 'igu' } };
+
+  // ---------- layouts (world units; the world is scaled to fit) ----------
+  const WIDE = {
+    key: 'wide', W: 960, H: 600, cw: 84, ch: 117,
+    phases: { x: 480, y: 14 },
+    rlabel: { x: 24, y: 56 }, rchest: i => ({ x: 24 + i * 46, y: 92 }), gs: 0.5,
+    rhand: (i, n) => ({ x: 250 + i * Math.min(76, 440 / Math.max(1, n - 1)), y: 56 }), hs: 0.82,
+    rtdeck: { x: 860, y: 56 }, ts: 0.72,
+    mine: { x: 40, y: 228 }, disc: { x: 846, y: 228 },
+    slot: i => ({ x: 176 + i * 104, y: 228 }), numDy: 122,
+    dice: { x: 486, y: 386 },
+    show: { x: 480, y: 286, s: 1.75 },
+    fan: (i, n) => ({ x: 480 - (n * 98 - 14) / 2 + i * 98, y: 214 }), fs: 1,
+    hand: (i, n) => ({ x: 250 + i * Math.min(94, 520 / Math.max(1, n - 1)), y: 452 }),
+    tdeck: { x: 860, y: 452 },
+    label: { x: 24, y: 452 }, chest: i => ({ x: 24 + i * 46, y: 488 }),
+  };
+  const NARROW = {
+    key: 'narrow', W: 520, H: 800, cw: 74, ch: 103,
+    phases: { x: 260, y: 10 },
+    rlabel: { x: 16, y: 52 }, rchest: i => ({ x: 16 + i * 40, y: 86 }), gs: 0.48,
+    rhand: (i, n) => ({ x: 190 + i * Math.min(64, 180 / Math.max(1, n - 1)), y: 52 }), hs: 0.8,
+    rtdeck: { x: 444, y: 52 }, ts: 0.64,
+    mine: { x: 16, y: 200 }, disc: { x: 430, y: 200 },
+    slot: i => ({ x: 120 + (i % 3) * 96, y: 200 + Math.floor(i / 3) * 140 }), numDy: 108,
+    dice: { x: 260, y: 488 },
+    show: { x: 260, y: 330, s: 1.9 },
+    fan: (i, n) => n > 4 ? { x: 260 - (3 * 96 - 16) / 2 + (i % 3) * 96, y: 190 + Math.floor(i / 3) * 140 } : { x: 260 - (n * 96 - 16) / 2 + i * 96, y: 260 }, fs: 1,
+    hand: (i, n) => ({ x: 16 + i * Math.min(80, 330 / Math.max(1, n - 1)), y: 560 }),
+    tdeck: { x: 444, y: 560 },
+    label: { x: 16, y: 690 }, chest: i => ({ x: 16 + i * 40, y: 724 }),
+  };
+
+  const CSS = `
+.tut { --t-ruby: var(--ruby, #e0473a); --t-sapph: var(--sapphire, #3f86e8); --t-lamp: var(--lamp, #f2a93b); --t-ink: var(--lamp-ink, #2a1803);
+  --t-panel: var(--panel, #2d2219); --t-seam: var(--seam, #4b3a2c); --t-muted: var(--muted, #bba78d); --t-text: var(--text, #f2e6d2);
+  --t-display: var(--display, 'Bangers', Impact, sans-serif); color: var(--t-text); display: grid; gap: 12px; min-width: 0; width: 100%; margin-inline: auto;
+  max-width: max(320px, calc((100vh - 380px) * 1.6)); }
+.tut-wrap { position: relative; width: 100%; overflow: hidden; border-radius: 14px; border: 1px solid var(--t-seam);
+  background: var(--felt, #221911); box-shadow: inset 0 0 90px rgba(0,0,0,.6); }
+.tut-world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.tut-world.noanim *, .tut-world.noanim { transition: none !important; animation: none !important; }
+.tut-card { position: absolute; left: 0; top: 0; transform-origin: 50% 50%; transition: transform .6s cubic-bezier(.3,.7,.3,1), opacity .4s; perspective: 900px; animation: tutIn .4s ease-out; }
+.tut-card.fly { z-index: 950 !important; }
+.tut-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .5s ease-in-out; }
+.tut-card.down .tut-inner { transform: rotateY(180deg); }
+.tut-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 6% / 4.3%; overflow: hidden; background: #000; box-shadow: 0 3px 10px rgba(0,0,0,.65); }
+.tut-face img { width: 100%; height: 100%; display: block; }
+.tut-face.back { transform: rotateY(180deg); }
+.tut-card.glow .tut-face { box-shadow: 0 0 0 4px var(--t-lamp), 0 0 26px var(--t-lamp); }
+@keyframes tutIn { from { opacity: 0; } }
+.tut-slot { position: absolute; border: 2px dashed var(--t-seam); border-radius: 6% / 4.3%; transition: box-shadow .3s, border-color .3s; }
+.tut-slot.hl { border-color: var(--t-lamp); box-shadow: 0 0 0 4px var(--t-lamp), 0 0 30px var(--t-lamp); z-index: 290; }
+.tut-num { position: absolute; width: 84px; text-align: center; font: 22px/1 var(--t-display); color: var(--t-muted); letter-spacing: 1px; }
+.tut-num.hl { color: var(--t-lamp); }
+.tut-lbl { position: absolute; font: 600 13px/1.2 var(--body, sans-serif); text-transform: uppercase; letter-spacing: .08em; color: var(--t-muted); white-space: nowrap; }
+.tut-name { position: absolute; display: flex; align-items: center; gap: 8px; font: 26px/1 var(--t-display); letter-spacing: 1px; white-space: nowrap; }
+.tut-name.rex { color: var(--t-ruby); } .tut-name.igu { color: var(--t-sapph); }
+.tut-name .tut-ava { width: 30px; height: 30px; }
+.tut-gslot { position: absolute; border: 2px dashed var(--t-seam); border-radius: 6% / 4.3%; }
+.tut-phases { position: absolute; display: flex; gap: 6px; transform: translateX(-50%); align-items: center; white-space: nowrap; }
+.tut-ph { padding: 5px 12px; border-radius: 99px; border: 1px solid var(--t-seam); font: 700 14px/1 var(--body, sans-serif); text-transform: uppercase; letter-spacing: .08em; color: var(--t-muted); background: rgba(0,0,0,.35); transition: background .3s, color .3s; }
+.tut-ph.on { background: var(--t-lamp); color: var(--t-ink); border-color: var(--t-lamp); }
+.tut-turn { font: 22px/1 var(--t-display); letter-spacing: 1px; margin-right: 6px; }
+.tut-turn.rex { color: var(--t-ruby); } .tut-turn.igu { color: var(--t-sapph); }
+.tut-toast { position: absolute; z-index: 1000; transform: translate(-50%, -100%); background: #fff7e6; color: #2a1803; font: 700 17px/1.25 var(--body, sans-serif);
+  padding: 8px 12px; border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.6); max-width: 300px; text-align: center; animation: tutPop .3s ease-out; pointer-events: none; }
+.tut-toast::after { content: ''; position: absolute; left: 50%; bottom: -8px; margin-left: -8px; border: 8px solid transparent; border-bottom: 0; border-top-color: #fff7e6; }
+.tut-toast.below { transform: translate(-50%, 0); } .tut-toast.below::after { bottom: auto; top: -8px; border: 8px solid transparent; border-top: 0; border-bottom-color: #fff7e6; }
+.tut-toast.small { font-size: 14px; padding: 5px 8px; }
+.tut-toast.tiny { font-size: 13px; padding: 4px 6px; width: 92px; }
+.tut-toast.big { font: 30px/1.1 var(--t-display); letter-spacing: 1px; padding: 12px 18px; max-width: 460px; background: var(--t-lamp); }
+.tut-toast.big::after { border-top-color: var(--t-lamp); }
+.tut-toast.red { background: #ffe1dc; } .tut-toast.blue { background: #dde9ff; }
+.tut-toast.red::after { border-top-color: #ffe1dc; } .tut-toast.blue::after { border-top-color: #dde9ff; }
+.tut-toast.out { opacity: 0; transition: opacity .3s; }
+@keyframes tutPop { from { opacity: 0; margin-top: 8px; } }
+.tut-dice { position: absolute; display: flex; gap: 14px; transform: translateX(-50%); }
+.tut-die { width: 52px; height: 52px; border-radius: 10px; background: #f3ede2; border: 2px solid #8a7a66; display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: 7px; box-shadow: 0 4px 10px rgba(0,0,0,.5); transition: background .3s, transform .3s; }
+.tut-die i { width: 10px; height: 10px; border-radius: 50%; background: #1d1510; place-self: center; visibility: hidden; }
+.tut-die i.on { visibility: visible; }
+.tut-die.picked { background: var(--t-lamp); border-color: #fff2d6; box-shadow: 0 0 0 3px var(--t-lamp), 0 0 22px var(--t-lamp); }
+.tut-die.spin { animation: tutSpin .7s ease-out; }
+.tut-die.bump { transform: scale(1.25); }
+@keyframes tutSpin { 0% { transform: rotate(0) translateY(-30px); } 60% { transform: rotate(540deg) translateY(4px); } 100% { transform: rotate(720deg); } }
+.tut-ava { flex: none; width: 54px; height: 54px; border-radius: 50%; background-repeat: no-repeat; background-size: 220% auto; border: 3px solid; box-shadow: 0 3px 8px rgba(0,0,0,.5); }
+.tut-ava.rex { background-image: url(cards/back-tools_red.webp); background-position: 100% 46%; border-color: var(--t-ruby); background-color: #c7442e; }
+.tut-ava.igu { background-image: url(cards/back-tools_blue.webp); background-position: 100% 50%; border-color: var(--t-sapph); background-color: #3a74c4; transform: scaleX(-1); }
+.tut-talk { display: grid; gap: 8px; min-height: 150px; align-content: start; }
+.tut-line { display: flex; gap: 10px; align-items: flex-end; animation: tutPop .3s ease-out; }
+.tut-line.igu { flex-direction: row-reverse; }
+.tut-bubble { position: relative; background: var(--t-panel); border: 2px solid var(--t-ruby); border-radius: 14px; padding: 9px 13px; font-size: 16px; line-height: 1.4; max-width: 62ch; }
+.tut-line.igu .tut-bubble { border-color: var(--t-sapph); }
+.tut-bubble b.who { display: block; font: 18px/1 var(--t-display); letter-spacing: 1px; color: var(--t-ruby); margin-bottom: 3px; font-weight: 400; }
+.tut-line.igu .tut-bubble b.who { color: var(--t-sapph); }
+.tut-line.old { opacity: .6; }
+.tut-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.tut-title { font: 28px/1 var(--t-display); letter-spacing: 1px; color: var(--t-lamp); margin: 0; flex: 1; min-width: 180px; }
+.tut-title small { font: 600 13px/1 var(--body, sans-serif); color: var(--t-muted); letter-spacing: .06em; text-transform: uppercase; margin-left: 8px; }
+.tut-btn { background: #3a2d22; border: 1px solid var(--t-seam); border-radius: 9px; padding: 9px 14px; cursor: pointer; font: 600 15px/1 var(--body, sans-serif); color: var(--t-text); }
+.tut-btn:hover { border-color: var(--t-lamp); }
+.tut-btn.primary { background: var(--t-lamp); color: var(--t-ink); border-color: var(--t-lamp); }
+.tut-btn:disabled { opacity: .4; cursor: default; }
+.tut-dots { display: flex; gap: 6px; flex-wrap: wrap; }
+.tut-dot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--t-muted); background: transparent; padding: 0; cursor: pointer; }
+.tut-dot.on { background: var(--t-lamp); border-color: var(--t-lamp); }
+.tut-dot.seen { background: var(--t-muted); }
+@media (max-width: 560px) { .tut-bubble { font-size: 15px; } .tut-ava { width: 44px; height: 44px; } .tut-title { font-size: 24px; } }
+@media (prefers-reduced-motion: reduce) { .tut-card, .tut-inner, .tut-die { transition-duration: .01s !important; animation: none !important; } }
+`;
+
+  // ---------- the script ----------
+  const RSTART = ['blue-magnet-3', 'blue-sonar', 'blue-collapse'];
+  const ROW1 = ['gem-blue-2', 'cave-2', 'treasure-6-1', 'junk-7', 'gem-red-3', 'rock-8'];
+  const ROW2 = ['rock-2', 'junk-9', 'gem-red-2', 'treasure-1-2', 'rock-16', 'gem-blue-1'];
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  const STEPS = [
+    {
+      title: 'Dig for Gems', setup: { fan: ['gem-red-1', 'gem-red-2', 'gem-red-3'], mine: [], rhand: [] },
+      run: async T => {
+        await T.say('rex', "Hi! I'm the T-rex. I play red, and I'm digging for red Gems.");
+        await T.say('igu', "And I'm the Iguanodon. I play blue, so I want the blue ones.");
+        await T.say('rex', 'The first of us to get 3 Gems of our own colour into our Warchest wins straight away.');
+        for (const g of ['gem-red-1', 'gem-red-2', 'gem-red-3']) { T.go(g, 'chest'); await T.wait(450); }
+        T.toast('3 red Gems in the Warchest: the T-rex wins!', 'chest:1', { cls: 'red' });
+        await T.wait(2400); T.clear();
+        await T.say('igu', "But there's a catch: all 6 Gems start hidden in one shared mine.");
+        for (const g of ['gem-blue-1', 'gem-blue-2', 'gem-blue-3']) T.spawn(g, 'fan');
+        T.flow(); await T.wait(900);
+        for (const g of ['gem-red-1', 'gem-red-2', 'gem-red-3', 'gem-blue-1', 'gem-blue-2', 'gem-blue-3']) { T.go(g, 'mine', 0); await T.wait(180); }
+        for (let k = 1; k <= 6; k++) T.spawn('m' + k, 'mine');
+        T.flow(); T.toast('The mine', 'mine', { cls: 'small' });
+      },
+    },
+    {
+      title: 'The mine and the tools', setup: { fan: ['gem-red-1', 'gem-blue-1', 'rock-1', 'junk-1', 'treasure-5-1', 'cave-1'], mine: [], tdeck: [], rtdeck: [], rhand: [] },
+      run: async T => {
+        await T.say('rex', 'The mine is one shared deck of 80 cards, shuffled together.');
+        const lab = ['3 red Gems', '3 blue Gems', '47 Rocks', '5 Junk', '16 Treasures', '6 Cave-ins'];
+        lab.forEach((t, i) => T.toast(t, 'fanb:' + i, { cls: 'tiny below' }));
+        await T.wait(2600); T.clear();
+        for (const c of ['gem-red-1', 'gem-blue-1', 'rock-1', 'junk-1', 'treasure-5-1', 'cave-1']) { T.go(c, 'mine', 0); await T.wait(150); }
+        for (let k = 1; k <= 6; k++) T.spawn('m' + k, 'mine');
+        T.flow(); await T.wait(500);
+        await T.say('igu', 'We each have our own 17-card tool deck: 6 Magnets, a Claim Jump, 2 Drills and 8 other tools. We start with 3 tools each.');
+        for (const k of [1, 2, 3]) { T.spawn('rt' + k, 'tdeck'); T.spawn('bt' + k, 'rtdeck'); }
+        T.flow(); await T.wait(600);
+        const mine = ['red-magnet-5', 'red-claim-jump', 'red-drill-1'];
+        for (let k = 0; k < 3; k++) {
+          T.spawn(mine[k], 'tdeck', 0); T.spawn(RSTART[k], 'rtdeck', 0);
+          T.go(mine[k], 'hand'); T.go(RSTART[k], 'rhand'); await T.wait(450);
+        }
+        await T.wait(400);
+        await T.say('rex', "Our hands are open here so you can see everything. In a real game, keep yours secret!");
+      },
+    },
+    {
+      title: 'A turn in five steps', setup: { hand: ['red-magnet-5', 'red-claim-jump', 'red-drill-1'] },
+      run: async T => {
+        await T.say('rex', 'Every turn has the same five steps. Watch the bar at the top.');
+        const tips = ['Dig: take the top card of the mine', 'Main: play tools and trade Rocks', 'Excavate: lay 6 cards in a row', 'Roll: roll 2 dice, dig a card from the row', 'Return: the rest go to the bottom of the mine'];
+        for (let i = 0; i < 5; i++) { T.phase(PHASES[i]); T.clear(); T.toast(tips[i], 'center', { cls: 'big' }); await T.wait(1900); }
+        T.clear(); T.phase(null);
+        await T.say('igu', "Let's watch the T-rex take a turn.");
+      },
+    },
+    {
+      title: '1. Dig', setup: { phase: 'Dig', top: ['gem-red-2', 'rock-5'], hand: ['red-magnet-5', 'red-claim-jump', 'red-drill-1'] },
+      run: async T => {
+        await T.say('rex', 'Step 1 is the Dig: I take the top card of the mine…');
+        T.go('gem-red-2', 'show'); await T.wait(900);
+        T.toast('A red Gem!', 'show', { cls: 'red' });
+        await T.say('rex', "Oh no! It's my Gem, but a Gem from the Dig can't be kept. It must go to the bottom of the mine.");
+        await T.wait(1200); T.clear();
+        T.go('gem-red-2', 'mine'); T.toast('To the bottom of the mine', 'mine', { cls: 'small' }); await T.wait(1200);
+        await T.say('igu', 'The same goes for my blue Gems. After that, you dig again.');
+        T.clear(); T.go('rock-5', 'show'); await T.wait(900);
+        T.toast('A Rock', 'show');
+        await T.say('rex', "A Rock. Not exciting, but Rocks pay for tools. Into my hand it goes. Gems are won from the row, with a Drill, or by trading 9 Rocks.");
+        T.clear(); T.go('rock-5', 'hand'); await T.wait(700);
+      },
+    },
+    {
+      title: '2. Main: trade Rocks', setup: { phase: 'Main', hand: ['red-magnet-5', 'red-claim-jump', 'red-drill-1', 'rock-5', 'rock-9', 'rock-12', 'rock-20', 'rock-27'] },
+      run: async T => {
+        await T.say('rex', 'Step 2 is Main: I can play tools and trade Rocks, in any order. I saved up 5 Rocks over a few turns.');
+        const rocks = ['rock-5', 'rock-9', 'rock-12', 'rock-20', 'rock-27'];
+        rocks.forEach(r => T.glow(r, true)); T.toast('5 Rocks = 2 tools', 'hand', { cls: 'red' }); await T.wait(1600);
+        for (const r of rocks) { T.glow(r, false); T.go(r, 'discard'); await T.wait(160); }
+        T.clear(); await T.wait(500);
+        for (const t of ['red-second-shift', 'red-headlamp']) { T.spawn(t, 'tdeck', 0); T.go(t, 'hand'); await T.wait(550); }
+        await T.say('igu', 'That is the Rock ladder: 3 Rocks buy 1 tool, 5 buy 2, 7 buy 3, and 9 Rocks let you search the mine for one of your own Gems.');
+        T.toast('3 → 1 tool · 5 → 2 tools · 7 → 3 tools · 9 → a Gem', 'center', { cls: 'big' });
+        await T.say('rex', 'A Gold Nugget treasure counts as 3 Rocks. Junk is no use at all, so it is lucky there are only 5 of them.');
+      },
+    },
+    {
+      title: 'Main: Headlamp and Drill', setup: { phase: 'Main', top: ['rock-14', 'junk-11', 'gem-red-1'], hand: ['red-magnet-5', 'red-claim-jump', 'red-drill-1', 'red-second-shift', 'red-headlamp'] },
+      run: async T => {
+        await T.say('rex', 'Now the fun part. My Headlamp lets me look at the top 3 cards of the mine and put them back in any order.');
+        T.glow('red-headlamp', true); await T.wait(700); T.glow('red-headlamp', false); T.go('red-headlamp', 'discard'); await T.wait(500);
+        for (const c of ['rock-14', 'junk-11', 'gem-red-1']) { T.go(c, 'fan'); await T.wait(250); }
+        await T.wait(500); T.toast('My Gem!', 'fan:2', { cls: 'red' });
+        await T.say('rex', 'My red Gem is third. I put it on top…');
+        T.clear(); T.move('gem-red-1', 'fan', 0); T.flow(); await T.wait(900);
+        for (const c of ['junk-11', 'rock-14', 'gem-red-1']) { T.go(c, 'mine', 0); await T.wait(200); }
+        await T.wait(500);
+        await T.say('rex', '…then play a Drill. A Drill digs the top card of the mine, and unlike the Dig, I keep my own Gem!');
+        T.glow('red-drill-1', true); await T.wait(600); T.glow('red-drill-1', false); T.go('red-drill-1', 'discard'); await T.wait(600);
+        T.go('gem-red-1', 'show'); await T.wait(1000);
+        T.go('gem-red-1', 'chest'); T.toast('1 of 3', 'chest:0', { cls: 'red' }); await T.wait(1000);
+        await T.say('igu', 'Winning a Gem means you dig again, so the T-rex takes the next card too.');
+        T.go('rock-14', 'show'); await T.wait(800); T.go('rock-14', 'hand'); await T.wait(600);
+      },
+    },
+    {
+      title: '3. Excavate', setup: { phase: 'Excavate', chest: ['gem-red-1'], top: ROW1, hand: ['red-magnet-5', 'red-claim-jump', 'red-second-shift', 'rock-14'] },
+      run: async T => {
+        await T.say('rex', 'Step 3 is Excavate: I lay the top 6 cards of the mine face up in a row, at positions 1 to 6.');
+        for (let i = 0; i < 6; i++) { T.go(ROW1[i], 'row', i); await T.wait(380); }
+        await T.wait(500);
+        T.slot(0, true); T.toast('Blue Gem', 'slot:0', { cls: 'blue small' });
+        await T.say('igu', 'Everyone can see the row. Ooh, my blue Gem is at 1…');
+        T.slot(4, true); T.toast('Red Gem', 'slot:4', { cls: 'red small' });
+        await T.say('rex', '…and my red Gem is at 5. One die roll could win it.');
+      },
+    },
+    {
+      title: '4. Roll', setup: { phase: 'Roll', chest: ['gem-red-1'], row: ROW1, hand: ['red-magnet-5', 'red-claim-jump', 'red-second-shift', 'rock-14'] },
+      run: async T => {
+        await T.say('rex', 'Step 4 is the Roll: I roll 2 dice and choose one of them. I dig the card at that position.');
+        await T.roll([2, 5]);
+        T.slot(1, true); T.toast('2: a Cave-in', 'slot:1', { cls: 'small' });
+        T.slot(4, true); T.toast('5: my Gem!', 'slot:4', { cls: 'red small' });
+        await T.wait(900);
+        await T.say('rex', 'A 2 and a 5. Position 5 is my red Gem, so I choose the 5!');
+        T.slot(1, false); T.pick(1);
+      },
+    },
+    {
+      title: 'Magnets fight over the die', setup: { phase: 'Roll', chest: ['gem-red-1'], row: ROW1, dice: { vals: [2, 5], pick: 1 }, hl: [4], hand: ['red-magnet-5', 'red-claim-jump', 'red-second-shift', 'rock-14'] },
+      run: async T => {
+        await T.say('igu', 'Not so fast! Once you choose, I can play a Magnet. Magnet 3 sets your die to 3.');
+        T.go('blue-magnet-3', 'show'); await T.wait(1100); T.go('blue-magnet-3', 'discard');
+        T.slot(4, false); T.die(1, 3); T.slot(2, true); T.toast('Now position 3', 'slot:2', { cls: 'blue small' }); await T.wait(1400);
+        await T.say('rex', 'Then I answer with my Magnet 5. Back to 5!');
+        T.clear(); T.go('red-magnet-5', 'show'); await T.wait(1100); T.go('red-magnet-5', 'discard');
+        T.slot(2, false); T.die(1, 5); T.slot(4, true); T.toast('Back to 5', 'slot:4', { cls: 'red small' }); await T.wait(1200);
+        await T.say('igu', 'We take turns playing Magnets until we both pass, and the last Magnet decides. A Demagnetiser cancels a Magnet, and a Shovel swaps two cards in the row.');
+      },
+    },
+    {
+      title: 'Dig from the row', setup: { phase: 'Roll', chest: ['gem-red-1'], row: ROW1, dice: { vals: [2, 5], pick: 1 }, hl: [4], discard: ['blue-magnet-3', 'red-magnet-5'], rhand: ['blue-sonar', 'blue-collapse'], top: ['rock-31'], hand: ['red-claim-jump', 'red-second-shift', 'rock-14'] },
+      run: async T => {
+        await T.say('rex', 'I dig position 5. My own Gem goes straight into my Warchest. That makes 2!');
+        T.slot(4, false); T.go('gem-red-3', 'show'); await T.wait(1000);
+        T.go('gem-red-3', 'chest'); T.toast('2 of 3', 'chest:1', { cls: 'red' }); await T.wait(1200);
+        await T.say('rex', 'A Gem won from the row means I dig again from the top of the mine.');
+        T.clear(); T.go('rock-31', 'show'); await T.wait(800); T.go('rock-31', 'hand'); await T.wait(700);
+        T.slot(0, true); T.toast("Can't be taken", 'slot:0', { cls: 'blue small' });
+        await T.say('igu', 'If the die lands on a rival\'s Gem, like my blue one at 1, it can\'t be taken and stays in the row. A Flooded Shaft can keep your own Gem in the row too.');
+      },
+    },
+    {
+      title: '5. Return', setup: { phase: 'Return', chest: ['gem-red-1', 'gem-red-3'], row: ['gem-blue-2', 'cave-2', 'treasure-6-1', 'junk-7', null, 'rock-8'], discard: ['blue-magnet-3', 'red-magnet-5'], rhand: ['blue-sonar', 'blue-collapse'], hand: ['red-claim-jump', 'red-second-shift', 'rock-14', 'rock-31'] },
+      run: async T => {
+        await T.say('rex', 'Step 5 is Return: the rest of the row goes to the bottom of the mine, in any order I like. I want the blue Gem last, buried as deep as it goes.');
+        T.slot(0, true); T.toast('Bury it!', 'slot:0', { cls: 'red small' }); await T.wait(1300);
+        await T.say('igu', 'Not this time! I play Collapse: you must shuffle the row before you return it.');
+        T.clear(); T.slot(0, false);
+        T.go('blue-collapse', 'show'); await T.wait(1200); T.go('blue-collapse', 'discard'); await T.wait(400);
+        const rest = ['gem-blue-2', 'cave-2', 'treasure-6-1', 'junk-7', 'rock-8'];
+        for (const c of rest) T.go(c, 'show');
+        T.flow(); await T.wait(700);
+        for (let k = 0; k < 3; k++) { for (const c of rest) T.wobble(c); await T.wait(350); }
+        T.toast('Shuffled!', 'show', { cls: 'blue' }); await T.wait(900); T.clear();
+        for (const c of ['treasure-6-1', 'gem-blue-2', 'rock-8', 'cave-2', 'junk-7']) { T.go(c, 'mine'); await T.wait(220); }
+        await T.wait(400);
+        await T.say('rex', "Grr. Now the blue Gem could come back sooner. That's the end of my turn: over to the Iguanodon.");
+      },
+    },
+    {
+      title: 'Cave-ins and Treasures', setup: { turn: 'igu', phase: 'Dig', chest: ['gem-red-1', 'gem-red-3'], top: ['cave-4'], discard: ['blue-magnet-3', 'red-magnet-5', 'blue-collapse'], rhand: ['blue-sonar'], hand: ['red-claim-jump', 'red-second-shift', 'rock-14', 'rock-31'] },
+      run: async T => {
+        await T.say('igu', 'My turn. I dig the top card of the mine…');
+        T.go('cave-4', 'show'); await T.wait(1000);
+        T.toast('Cave-in!', 'show', { cls: 'blue' });
+        await T.say('igu', "A Cave-in! I discard it and one of my tools. That's my Sonar gone. A Canary treasure would have saved me.");
+        T.clear(); T.go('cave-4', 'discard'); await T.wait(300); T.go('blue-sonar', 'discard'); await T.wait(900);
+        await T.say('rex', 'Treasures are the good finds. Dig one and you get its power:');
+        const tr = ['treasure-1-1', 'treasure-4-1', 'treasure-6-2', 'treasure-5-1', 'treasure-7-1', 'treasure-8-1'];
+        for (const t of tr) T.spawn(t, 'fan');
+        T.flow();
+        ['Draw 2 tools', 'Arrange the top 6', 'Roll 3 dice', 'Reroll any die', 'Excavate again', 'Ignore a Cave-in'].forEach((t, i) => T.toast(t, 'fanb:' + i, { cls: 'tiny below' }));
+        await T.wait(1200);
+        await T.say('igu', 'Lantern and Old Map work at once. The rest you keep until you need them, along with the Mine Cart (take a second card from the row) and the Gold Nugget.');
+      },
+    },
+    {
+      title: 'Claim Jump and the win', setup: { turn: 'igu', phase: 'Roll', chest: ['gem-red-1', 'gem-red-3'], row: ROW2, discard: ['blue-magnet-3', 'red-magnet-5', 'blue-collapse', 'cave-4', 'blue-sonar'], rhand: [], hand: ['red-claim-jump', 'red-second-shift', 'rock-14', 'rock-31'] },
+      run: async T => {
+        await T.say('igu', 'I excavate a new row and roll…');
+        await T.roll([3, 6]);
+        T.slot(5, true); T.toast('Blue Gem at 6', 'slot:5', { cls: 'blue small' });
+        await T.say('igu', 'A 3 and a 6, and my blue Gem is at 6!');
+        await T.say('rex', 'Claim Jump! After you roll, I can take over your roll and your dig.');
+        T.clear(); T.glow('red-claim-jump', true); await T.wait(500); T.glow('red-claim-jump', false);
+        T.go('red-claim-jump', 'show'); await T.wait(1200); T.go('red-claim-jump', 'discard');
+        T.turn('rex'); T.toast('I skip my next Dig', 'hand', { cls: 'red small' }); await T.wait(1000);
+        await T.say('igu', "Grr! I'd jump it back with my own Claim Jump, if I had one. Jumping costs the T-rex their next Dig.");
+        T.clear(); T.slot(5, false); T.pick(0); T.slot(2, true);
+        await T.say('rex', 'I choose the 3. Look, it\'s the red Gem I sent to the bottom earlier, come round again!');
+        T.slot(2, false); T.go('gem-red-2', 'show'); await T.wait(1000);
+        T.go('gem-red-2', 'chest'); await T.wait(900);
+        T.toast('3 red Gems: the T-rex wins!', 'center', { cls: 'big' });
+        await T.say('rex', "That's 3 red Gems in my Warchest. I win! Now it's your turn to dig.");
+      },
+    },
+  ];
+
+  // ---------- engine ----------
+  let styled = false;
+  function mount(root, opts = {}) {
+    if (!styled) { const s = document.createElement('style'); s.textContent = CSS; document.head.appendChild(s); styled = true; }
+    root.classList.add('tut');
+    root.innerHTML = `
+      <div class="tut-bar"><h2 class="tut-title"></h2><div class="tut-dots"></div></div>
+      <div class="tut-wrap"><div class="tut-world"></div></div>
+      <div class="tut-talk" aria-live="polite"></div>
+      <div class="tut-bar"><button class="tut-btn" data-t="back">‹ Back</button><button class="tut-btn" data-t="replay">↻ Replay</button>
+        <span style="flex:1"></span><button class="tut-btn" data-t="skip">Skip animation</button><button class="tut-btn primary" data-t="next">Next ›</button></div>`;
+    const q = s => root.querySelector(s);
+    const wrap = q('.tut-wrap'), world = q('.tut-world'), talk = q('.tut-talk');
+    let L = WIDE, scale = 1, step = 0, token = 0, fast = false, seen = new Set();
+    let Z = {}, els = {}, toasts = [], dice = null, hl = new Set(), phase = null, turn = 'rex', flyTimers = {};
+
+    const dots = q('.tut-dots');
+    dots.innerHTML = STEPS.map((s, i) => `<button class="tut-dot" data-i="${i}" aria-label="Step ${i + 1}: ${s.title}" title="${s.title}"></button>`).join('');
+
+    // ----- positions -----
+    function pos(zone, i, n) {
+      const cw = L.cw;
+      switch (zone) {
+        case 'mine': { const off = Math.min(n - 1 - i, 4) * 2; return { x: L.mine.x - off * .6, y: L.mine.y - off, s: 1, up: false, z: 100 + (n - i) }; }
+        case 'tdeck': case 'rtdeck': { const b = zone === 'tdeck' ? L.tdeck : L.rtdeck; const off = Math.min(n - 1 - i, 3) * 2; return { x: b.x - off * .6, y: b.y - off, s: L.ts, up: false, z: 100 + (n - i), tl: true }; }
+        case 'row': { const p = L.slot(i); return { x: p.x, y: p.y, s: 1, up: true, z: 200 + i }; }
+        case 'hand': { const p = L.hand(i, n); return { x: p.x, y: p.y, s: 1, up: true, z: 500 + i }; }
+        case 'rhand': { const p = L.rhand(i, n); return { x: p.x, y: p.y, s: L.hs, up: true, z: 500 + i, tl: true }; }
+        case 'chest': { const p = L.chest(i); return { x: p.x, y: p.y, s: L.gs, up: true, z: 400 + i, tl: true }; }
+        case 'rchest': { const p = L.rchest(i); return { x: p.x, y: p.y, s: L.gs, up: true, z: 400 + i, tl: true }; }
+        case 'discard': return { x: L.disc.x + ((i * 37) % 9 - 4), y: L.disc.y + ((i * 23) % 7 - 3), r: (i * 53) % 13 - 6, s: 1, up: true, z: 300 + i };
+        case 'show': return { x: L.show.x - cw / 2 + (i - (n - 1) / 2) * 14, y: L.show.y - L.ch / 2 + (i - (n - 1) / 2) * 6, s: L.show.s, up: true, z: 900 + i };
+        case 'fan': { const p = L.fan(i, n); return { x: p.x, y: p.y, s: L.fs, up: true, z: 800 + i }; }
+      }
+    }
+    // a scale that keeps the card's top-left corner in place (for small piles and hand cards)
+    function xf(p, extra = '') {
+      let { x, y } = p; const s = p.s || 1;
+      if (p.tl) { x -= L.cw * (1 - s) / 2; y -= L.ch * (1 - s) / 2; }
+      return `translate(${x}px, ${y}px) rotate(${p.r || 0}deg) scale(${s})${extra}`;
+    }
+    function where(id) { for (const z in Z) { const i = Z[z].indexOf(id); if (i >= 0) return [z, i]; } return null; }
+    function el(id) {
+      if (els[id]) return els[id];
+      const e = document.createElement('div'); e.className = 'tut-card down';
+      e.style.width = L.cw + 'px'; e.style.height = L.ch + 'px';
+      e.innerHTML = `<div class="tut-inner"><div class="tut-face front"><img alt="" src="${IMG(faceOf(id))}"></div><div class="tut-face back"><img alt="" src="${IMG(backOf(id))}"></div></div>`;
+      world.appendChild(e); els[id] = e; return e;
+    }
+    function flow() {
+      const live = new Set();
+      for (const z in Z) {
+        const arr = Z[z], n = z === 'row' ? 6 : arr.length;
+        arr.forEach((id, i) => {
+          if (!id) return; live.add(id);
+          const p = pos(z, i, n), e = el(id);
+          e.style.transform = xf(p, e.dataset.wob ? ` rotate(${e.dataset.wob}deg)` : '');
+          e.style.zIndex = p.z; e.classList.toggle('down', !p.up);
+        });
+      }
+      for (const id in els) if (!live.has(id)) { els[id].remove(); delete els[id]; }
+    }
+    function move(id, zone, idx) {
+      const w = where(id);
+      if (w) { if (w[0] === 'row') Z.row[w[1]] = null; else Z[w[0]].splice(w[1], 1); }
+      if (zone === 'row') Z.row[idx] = id;
+      else if (idx === undefined) Z[zone].push(id); else Z[zone].splice(idx, 0, id);
+      const e = el(id); e.classList.add('fly'); delete e.dataset.wob;
+      clearTimeout(flyTimers[id]); flyTimers[id] = setTimeout(() => e.classList.remove('fly'), 650);
+    }
+
+    // ----- decor -----
+    function decor() {
+      world.querySelectorAll('.tut-deco').forEach(e => e.remove());
+      const add = (html, style) => { const d = document.createElement('div'); d.className = 'tut-deco'; d.innerHTML = html; const c = d.firstElementChild; Object.assign(c.style, style); c.classList.add('tut-deco'); world.appendChild(c); return c; };
+      for (let i = 0; i < 6; i++) {
+        const p = L.slot(i);
+        add(`<div class="tut-slot" data-slot="${i}"></div>`, { left: p.x + 'px', top: p.y + 'px', width: L.cw + 'px', height: L.ch + 'px' });
+        add(`<div class="tut-num" data-num="${i}">${i + 1}</div>`, { left: p.x + 'px', top: p.y + L.numDy + 'px', width: L.cw + 'px' });
+      }
+      add('<div class="tut-lbl">Mine</div>', { left: L.mine.x + 'px', top: L.mine.y + L.ch + 6 + 'px' });
+      add('<div class="tut-lbl">Discard</div>', { left: L.disc.x + 'px', top: L.disc.y + L.ch + 6 + 'px' });
+      const sm = L.cw * L.ts;
+      add('<div class="tut-lbl">Red tools</div>', { left: L.tdeck.x + 'px', top: L.tdeck.y + L.ch * L.ts + 6 + 'px' });
+      add('<div class="tut-lbl">Blue tools</div>', { left: L.rtdeck.x + 'px', top: L.rtdeck.y + L.ch * L.ts + 6 + 'px' });
+      void sm;
+      add('<div class="tut-name igu"><span class="tut-ava igu"></span>Iguanodon</div>', { left: L.rlabel.x + 'px', top: L.rlabel.y + 'px' });
+      add('<div class="tut-name rex"><span class="tut-ava rex"></span>T-rex</div>', { left: L.label.x + 'px', top: L.label.y + 'px' });
+      for (let i = 0; i < 3; i++) for (const [f, c] of [[L.chest, 'rex'], [L.rchest, 'igu']]) {
+        const p = f(i); add(`<div class="tut-gslot ${c}"></div>`, { left: p.x + 'px', top: p.y + 'px', width: L.cw * L.gs + 'px', height: L.ch * L.gs + 'px' });
+      }
+      add('<div class="tut-lbl">Warchest</div>', { left: L.chest(0).x + 'px', top: L.chest(0).y + L.ch * L.gs + 4 + 'px' });
+      add('<div class="tut-lbl">Warchest</div>', { left: L.rchest(0).x + 'px', top: L.rchest(0).y + L.ch * L.gs + 4 + 'px' });
+      add(`<div class="tut-phases"></div>`, { left: L.phases.x + 'px', top: L.phases.y + 'px' });
+      add(`<div class="tut-dice"></div>`, { left: L.dice.x + 'px', top: L.dice.y + 'px' });
+      renderPhase(); renderDice(); renderHl();
+    }
+    function renderPhase() {
+      const b = world.querySelector('.tut-phases'); if (!b) return;
+      b.innerHTML = `<span class="tut-turn ${turn}">${turn === 'rex' ? "T-rex's turn" : "Iguanodon's turn"}</span>` + PHASES.map(p => `<span class="tut-ph${p === phase ? ' on' : ''}">${p}</span>`).join('');
+    }
+    const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+    function dieHtml(v, picked) { return `<div class="tut-die${picked ? ' picked' : ''}" aria-label="Die showing ${v}">${Array.from({ length: 9 }, (_, k) => `<i class="${PIPS[v].includes(k) ? 'on' : ''}"></i>`).join('')}</div>`; }
+    function renderDice() {
+      const b = world.querySelector('.tut-dice'); if (!b) return;
+      b.innerHTML = dice ? dice.vals.map((v, i) => dieHtml(v, dice.pick === i)).join('') : '';
+    }
+    function renderHl() {
+      world.querySelectorAll('.tut-slot').forEach(e => e.classList.toggle('hl', hl.has(+e.dataset.slot)));
+      world.querySelectorAll('.tut-num').forEach(e => e.classList.toggle('hl', hl.has(+e.dataset.num)));
+    }
+
+    // ----- toasts -----
+    function anchor(a) {
+      const [k, v] = a.split(':'); const i = +v;
+      const cx = p => ({ x: p.x + L.cw / 2, y: p.y - 8 });
+      if (k === 'slot') return cx(L.slot(i));
+      if (k === 'fan') return cx(L.fan(i, Z.fan.length));
+      if (k === 'fanb') { const p = L.fan(i, Z.fan.length); return { x: p.x + L.cw / 2, y: p.y + L.ch * L.fs + 8 }; }
+      if (k === 'show') return { x: L.show.x, y: L.show.y - L.ch * L.show.s / 2 - 10 };
+      if (k === 'mine') return cx(L.mine);
+      if (k === 'chest') { const p = L.chest(i); return { x: p.x + L.cw * L.gs / 2, y: p.y - 6 }; }
+      if (k === 'hand') { const p = L.hand(0, 1); return { x: Math.min(L.W - 170, p.x + 150), y: p.y - 10 }; }
+      if (k === 'center') return { x: L.W / 2, y: L.key === 'narrow' ? L.dice.y - 6 : L.slot(0).y + L.ch * .7 };
+      return { x: L.W / 2, y: L.H / 2 };
+    }
+    function placeToast(t) { const p = anchor(t.a); t.e.style.left = p.x + 'px'; t.e.style.top = p.y + 'px'; }
+    function toast(text, a, o = {}) {
+      const e = document.createElement('div'); e.className = 'tut-toast ' + (o.cls || ''); e.textContent = text;
+      world.appendChild(e); const t = { e, a }; toasts.push(t); placeToast(t);
+    }
+    function clearToasts() { for (const t of toasts) { t.e.classList.add('out'); const e = t.e; setTimeout(() => e.remove(), 300); } toasts = []; }
+
+    // ----- talk -----
+    function say(who, text) {
+      talk.querySelectorAll('.tut-line').forEach(l => l.classList.add('old'));
+      const d = document.createElement('div'); d.className = 'tut-line ' + who;
+      d.innerHTML = `<span class="tut-ava ${who}" aria-hidden="true"></span><div class="tut-bubble"><b class="who">${WHO[who].name}</b></div>`;
+      d.querySelector('.tut-bubble').appendChild(document.createTextNode(text));
+      talk.appendChild(d);
+      const lines = talk.querySelectorAll('.tut-line'); if (lines.length > 2) lines[0].remove();
+    }
+
+    // ----- layout and scaling -----
+    function resize() {
+      const w = wrap.clientWidth; if (!w) return;
+      const next = w < 600 ? NARROW : WIDE;
+      const changed = next !== L; L = next;
+      scale = w / L.W; world.style.width = L.W + 'px'; world.style.height = L.H + 'px';
+      world.style.transform = `scale(${scale})`; wrap.style.height = L.H * scale + 'px';
+      if (changed) {
+        world.classList.add('noanim');
+        for (const id in els) { els[id].style.width = L.cw + 'px'; els[id].style.height = L.ch + 'px'; }
+        decor(); flow(); toasts.forEach(placeToast);
+        void world.offsetWidth; world.classList.remove('noanim');
+      }
+    }
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null;
+    if (ro) ro.observe(wrap); else addEventListener('resize', resize);
+
+    // ----- running steps -----
+    function setup(st) {
+      const s = STEPS[st].setup;
+      for (const id in els) els[id].remove();
+      els = {}; clearToasts(); world.querySelectorAll('.tut-toast').forEach(e => e.remove());
+      const fill = (p, n) => Array.from({ length: n }, (_, k) => p + (k + 1));
+      Z = {
+        mine: s.mine || [...(s.top || []), ...fill('m', 8)],
+        tdeck: s.tdeck || fill('rt', 3), rtdeck: s.rtdeck || fill('bt', 3),
+        hand: [...(s.hand || [])], rhand: [...(s.rhand || RSTART)],
+        chest: [...(s.chest || [])], rchest: [...(s.rchest || [])],
+        row: s.row ? [...s.row] : [null, null, null, null, null, null],
+        discard: [...(s.discard || [])], show: [], fan: [...(s.fan || [])],
+      };
+      dice = s.dice ? { vals: [...s.dice.vals], pick: s.dice.pick } : null;
+      hl = new Set(s.hl || []); phase = s.phase || null; turn = s.turn || 'rex';
+      talk.innerHTML = '';
+      world.classList.add('noanim'); decor(); flow(); void world.offsetWidth; world.classList.remove('noanim');
+    }
+    function makeT(my) {
+      const live = () => { if (my !== token) throw 'stop'; };
+      const T = {
+        wait: async ms => { live(); await sleep(fast ? Math.min(ms, 30) : ms); live(); },
+        say: async (who, text) => { live(); say(who, text); await T.wait(Math.max(1600, text.length * 50)); },
+        move: (id, zone, idx) => { live(); move(id, zone, idx); },
+        go: (id, zone, idx) => { live(); move(id, zone, idx); flow(); },
+        spawn: (id, zone, idx) => {
+          live(); if (idx === undefined) Z[zone].push(id); else Z[zone].splice(idx, 0, id);
+          // a new card appears in place (fading in), without sliding or flipping
+          const e = el(id), n = zone === 'row' ? 6 : Z[zone].length, p = pos(zone, Z[zone].indexOf(id), n);
+          e.style.transition = 'none'; e.firstElementChild.style.transition = 'none';
+          e.style.transform = xf(p); e.style.zIndex = p.z; e.classList.toggle('down', !p.up);
+          void e.offsetWidth; e.style.transition = ''; e.firstElementChild.style.transition = '';
+        },
+        flow: () => { live(); flow(); },
+        toast: (text, a, o) => { live(); toast(text, a, o); },
+        clear: () => { live(); clearToasts(); },
+        glow: (id, on) => { live(); el(id).classList.toggle('glow', on); },
+        slot: (i, on) => { live(); if (on) hl.add(i); else hl.delete(i); renderHl(); },
+        phase: p => { live(); phase = p; renderPhase(); },
+        turn: w => { live(); turn = w; renderPhase(); },
+        wobble: id => { live(); const e = el(id); e.dataset.wob = String(Math.round(Math.random() * 30 - 15)); flow(); },
+        roll: async vals => {
+          live(); dice = { vals: vals.map(() => 1 + Math.floor(Math.random() * 6)), pick: -1 }; renderDice();
+          world.querySelectorAll('.tut-die').forEach(d => d.classList.add('spin'));
+          for (let k = 0; k < 5; k++) { await T.wait(120); dice.vals = dice.vals.map(() => 1 + Math.floor(Math.random() * 6)); world.querySelectorAll('.tut-die').forEach((d, i) => d.outerHTML = dieHtml(dice.vals[i], false)); }
+          dice.vals = [...vals]; renderDice(); await T.wait(400);
+        },
+        die: (i, v) => { live(); dice.vals[i] = v; renderDice(); const d = world.querySelectorAll('.tut-die')[i]; d.classList.add('bump'); setTimeout(() => d.classList.remove('bump'), 350); },
+        pick: i => { live(); dice.pick = i; renderDice(); },
+      };
+      return T;
+    }
+    async function go(st, quick = false) {
+      step = Math.max(0, Math.min(STEPS.length - 1, st)); const my = ++token; fast = quick;
+      seen.add(step);
+      q('.tut-title').innerHTML = `${STEPS[step].title}<small>Step ${step + 1} of ${STEPS.length}</small>`;
+      dots.querySelectorAll('.tut-dot').forEach((d, i) => { d.classList.toggle('on', i === step); d.classList.toggle('seen', seen.has(i) && i !== step); d.setAttribute('aria-current', i === step ? 'step' : 'false'); });
+      q('[data-t=back]').disabled = step === 0;
+      const last = step === STEPS.length - 1;
+      q('[data-t=next]').textContent = last ? (opts.playLabel || 'Play a game ›') : 'Next ›';
+      q('[data-t=skip]').hidden = false;
+      setup(step);
+      try { await STEPS[step].run(makeT(my)); } catch (e) { if (e !== 'stop') throw e; return; }
+      if (my === token) { fast = false; q('[data-t=skip]').hidden = true; }
+    }
+    root.addEventListener('click', e => {
+      const b = e.target.closest('[data-t], .tut-dot'); if (!b) return;
+      if (b.classList.contains('tut-dot')) return go(+b.dataset.i);
+      const t = b.dataset.t;
+      if (t === 'back') go(step - 1);
+      else if (t === 'replay') go(step);
+      else if (t === 'skip') go(step, true);
+      else if (t === 'next') { if (step === STEPS.length - 1) { if (opts.onPlay) opts.onPlay(); } else go(step + 1); }
+    });
+    root.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight') { e.preventDefault(); if (step < STEPS.length - 1) go(step + 1); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); go(step - 1); }
+    });
+    if (!root.hasAttribute('tabindex')) root.tabIndex = -1;
+    return {
+      start(st = 0) { resize(); go(st); root.focus({ preventScroll: true }); },
+      stop() { token++; clearToasts(); },
+      steps: STEPS.length,
+    };
+  }
+  return { mount, STEPS };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = Tutorial;

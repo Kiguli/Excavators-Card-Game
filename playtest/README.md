@@ -6,6 +6,15 @@ You play the red T-rex; the AI plays the blue Iguanodon.
 Open `index.html` in a browser, or host this folder as-is. It is published to https://excavators.woodingben.com by `.github/workflows/pages.yml` on every push to `main`.
 It needs no server code: everything runs in the page, and the card images are in `cards/`.
 
+## Animated tutorial
+
+`tutorial.html` (https://excavators.woodingben.com/tutorial.html) is a 13-step animated tutorial for the default rules.
+The T-rex and the Iguanodon play a short scripted game with open hands and explain each rule in speech bubbles,
+with callouts on the cards. It covers the goal, the mine and tool decks, the five steps of a turn, a Gem from the Dig
+going to the bottom, the Rock ladder, Headlamp and Drill, the row and dice, Magnets, Return and Collapse, Cave-ins
+and Treasures, and a Claim Jump that wins the game. The same tutorial opens inside the game from "How to play"
+in the header, the setup screen and the Rules box (or `index.html#how-to-play`).
+
 ## AI levels
 
 | Level | How it plays |
@@ -45,6 +54,7 @@ The table starts with the default rules below, which tested best. The setup scre
 
 - `src/engine.js`: the rules and the three AI levels. Every decision goes through `game.ask()`, so a seat can be a person or a bot.
 - `src/ui.js`, `src/template.html`: the table, the phase guidance bar and the card preview.
-- `build.py`: inlines the sources into `index.html` (standalone page) and `artifact.html` (the same page without the document skeleton). Run `python3 build.py` after editing `src/`.
+- `src/tutorial.js`: the animated tutorial (its script, layout and animation). `src/tutorial_page.html`: the page around it.
+- `build.py`: inlines the sources into `index.html` (standalone page), `artifact.html` (the same page without the document skeleton) and `tutorial.html`. Run `python3 build.py` after editing `src/`.
 - `src/bots_test.js`: bot-against-bot win rates. `src/fuzz_test.js`: 3,000 games with a random person, to catch rule bugs. Run each with `node`.
 - `src/variants_test.js`: the rule-option comparison above.
