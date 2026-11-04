@@ -27,7 +27,7 @@ jobs:
       - name: Build the site from playtest/
         run: |
           mkdir _site
-          cp playtest/index.html _site/
+          cp playtest/index.html playtest/tutorial.html _site/
           cp -r playtest/cards _site/
           echo excavators.woodingben.com > _site/CNAME
       - uses: actions/configure-pages@v5

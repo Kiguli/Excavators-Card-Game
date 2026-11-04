@@ -184,6 +184,7 @@ button { font: inherit; color: inherit; }
 #float img { width: 100%; display: block; border-radius: 6% / 4.3%; }
 #zoom { cursor: zoom-out; }
 #zoom img { max-height: 88vh; max-width: 100%; width: auto; border-radius: 3%; }
+.dialog.howto { width: min(1040px, 100%); }
 @media (prefers-reduced-motion: reduce) { .card, .card.playable, #banner { transition: none; animation: none; } }
 </style>
 
@@ -192,6 +193,7 @@ button { font: inherit; color: inherit; }
   <span class="tag">Playtest table · v1 rules · v3 cards</span>
   <span class="grow"></span>
   <span class="rules-now" id="rules-now"></span>
+  <button class="tbtn" id="howto-btn">How to play</button>
   <button class="tbtn" id="rules-btn">Rules</button>
   <button class="tbtn" id="new">New game</button>
 </header>
@@ -236,6 +238,7 @@ button { font: inherit; color: inherit; }
   <div class="dialog" role="dialog" aria-labelledby="setup-title" style="max-height: calc(100vh - 32px); overflow-y: auto;">
     <h2 id="setup-title">Excavators</h2>
     <p>Dig through a shared mine and race the Iguanodon to put 3 red Gems in your Warchest. You play the red T-rex with the red tool deck.</p>
+    <button class="btn gold" id="setup-howto" type="button">New to Excavators? Watch how to play <em>2 minutes, animated</em></button>
     <h3>Opponent</h3>
     <div id="levels"></div>
     <details class="variants" id="variants">
@@ -298,7 +301,14 @@ button { font: inherit; color: inherit; }
       <p><b>Cave-in:</b> discard it and one of your tools. A Canary ignores it.</p>
       <p>Hover over any card (or tap it on a phone) to read it in full.</p>
     </div>
-    <div class="acts"><button class="btn primary" data-close>Close</button></div>
+    <div class="acts"><button class="btn" id="rules-howto" type="button">Watch the animated tutorial</button><button class="btn primary" data-close>Close</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="howto" hidden>
+  <div class="dialog howto" role="dialog" aria-label="How to play">
+    <div id="howto-body"></div>
+    <div class="acts"><button class="btn" data-close>Close</button></div>
   </div>
 </div>
 
@@ -306,6 +316,7 @@ button { font: inherit; color: inherit; }
 <div class="overlay" id="zoom" hidden><img id="zoom-img" alt=""></div>
 
 <script>
+/*TUTORIAL*/
 /*ENGINE*/
 const CARD_NAMES = /*NAMES*/;
 /*UI*/

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How to play Excavators</title>
+<meta name="description" content="An animated tutorial for Excavators: the T-rex and the Iguanodon play a short game and explain the rules as they go.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bangers&family=Barlow:wght@400;500;600;700&display=swap">
+<style>
+:root {
+  --rock: #15100c; --felt: #221911; --panel: #2d2219; --seam: #4b3a2c; --text: #f2e6d2; --muted: #bba78d;
+  --lamp: #f2a93b; --lamp-ink: #2a1803; --ruby: #e0473a; --sapphire: #3f86e8;
+  --display: 'Bangers', Impact, 'Arial Narrow', sans-serif; --body: 'Barlow', 'Segoe UI', system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: radial-gradient(120% 80% at 50% 0%, #2a1d13 0%, var(--rock) 60%) fixed, var(--rock); color: var(--text);
+  font: 16px/1.45 var(--body); padding: 0 max(16px, env(safe-area-inset-right, 0px)) 32px max(16px, env(safe-area-inset-left, 0px)); }
+.page { max-width: 1040px; margin: 0 auto; }
+.top { display: flex; align-items: center; gap: 12px; padding-block: 12px; flex-wrap: wrap; }
+.logo { font: 38px/1 var(--display); letter-spacing: 2px; color: var(--lamp); margin: 0; text-shadow: 0 2px 0 #000; }
+.logo a { color: inherit; text-decoration: none; }
+.tag { color: var(--muted); font-size: 14px; }
+.grow { flex: 1; }
+.play { background: var(--lamp); color: var(--lamp-ink); border-radius: 9px; padding: 9px 16px; font-weight: 700; text-decoration: none; }
+.play:hover { filter: brightness(1.08); }
+:focus-visible { outline: 3px solid var(--lamp); outline-offset: 2px; }
+.foot { color: var(--muted); font-size: 14px; margin-top: 18px; }
+.foot a { color: var(--lamp); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <h1 class="logo"><a href="./">Excavators</a></h1>
+    <span class="tag">How to play</span>
+    <span class="grow"></span>
+    <a class="play" href="./">Play against the AI ›</a>
+  </header>
+  <main id="tutorial"></main>
+  <p class="foot">Use the arrow keys or the buttons to move between steps. These are the default rules from the <a href="./">playtest table</a>.</p>
+</div>
+<script>
+/*TUTORIAL*/
+const tut = Tutorial.mount(document.getElementById('tutorial'), { onPlay: () => { location.href = './'; }, playLabel: 'Play against the AI ›' });
+tut.start(0);
+</script>
+</body>
+</html>
