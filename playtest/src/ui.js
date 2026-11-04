@@ -312,15 +312,20 @@ function boot() {
   let tut = null;
   const howto = () => {
     document.querySelectorAll('.overlay').forEach(o => { o.hidden = true; });
-    $('#howto').hidden = false;
-    if (!tut) tut = Tutorial.mount($('#howto-body'), { onPlay: () => { $('#howto').hidden = true; $('#setup').hidden = false; } });
+    $('#howto').hidden = false; document.body.style.overflow = 'hidden';
+    if (!tut) tut = Tutorial.mount($('#howto-body'), { onPlay: () => { $('#howto').hidden = true; $('#setup').hidden = false; }, onClose: () => { $('#howto').hidden = true; $('#home').hidden = false; } });
     tut.start(0);
   };
   $('#howto-btn').addEventListener('click', howto);
   $('#setup-howto').addEventListener('click', howto);
+  // the start screen: the tutorial or a game against the AI
+  $('#home-tutorial').addEventListener('click', howto);
+  $('#home-play').addEventListener('click', () => { $('#home').hidden = true; $('#setup').hidden = false; });
+  $('#home-link').addEventListener('click', e => { e.preventDefault(); document.querySelectorAll('.overlay').forEach(o => { o.hidden = true; }); $('#home').hidden = false; });
   $('#rules-howto').addEventListener('click', howto);
-  new MutationObserver(() => { if ($('#howto').hidden && tut) tut.stop(); }).observe($('#howto'), { attributes: true, attributeFilter: ['hidden'] });
-  if (location.hash === '#how-to-play') howto();
+  new MutationObserver(() => { document.body.style.overflow = $('#howto').hidden ? '' : 'hidden'; if ($('#howto').hidden && tut) tut.stop(); }).observe($('#howto'), { attributes: true, attributeFilter: ['hidden'] });
+  if (location.hash === '#how-to-play' || location.hash === '#tutorial') howto();
+  else if (location.hash === '#play') { $('#home').hidden = true; $('#setup').hidden = false; }
   document.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', () => { b.closest('.overlay').hidden = true; }));
   $('#zoom').addEventListener('click', () => { $('#zoom').hidden = true; });
   $('#prompt').addEventListener('click', e => UI.onPromptClick(e));

@@ -12,8 +12,12 @@ It needs no server code: everything runs in the page, and the card images are in
 The T-rex and the Iguanodon play a short scripted game with open hands and explain each rule in speech bubbles,
 with callouts on the cards. It covers the goal, the mine and tool decks, the five steps of a turn, a Gem from the Dig
 going to the bottom, the Rock ladder, Headlamp and Drill, the row and dice, Magnets, Return and Collapse, Cave-ins
-and Treasures, and a Claim Jump that wins the game. The same tutorial opens inside the game from "How to play"
-in the header, the setup screen and the Rules box (or `index.html#how-to-play`).
+and Treasures, and a Claim Jump that wins the game. It fills the screen without scrolling (speech beside the table on wide screens,
+under it on tall ones) and pauses on each speech bubble until you press Next.
+
+The game opens on a start screen with two choices: Tutorial, or Play against the AI (the setup screen).
+The tutorial also opens from "Tutorial" in the header, the setup screen and the Rules box. `index.html#tutorial` opens
+the tutorial and `index.html#play` goes straight to the setup screen.
 
 ## AI levels
 
